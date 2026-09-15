@@ -209,10 +209,41 @@ def region_from_tag(tag):
 def _get(path, **params):
     query = urllib.parse.urlencode({k: v for k, v in params.items() if v})
     url = f"{API}/{path}" + (f"?{query}" if query else "")
-    return net.get_json(url, headers={
-        "Authorization": f"Bearer {_bearer()}",
-        "Accept": JSONAPI,
-    })
+    try:
+        return net.get_json(url, headers={
+            "Authorization": f"Bearer {_bearer()}",
+            "Accept": JSONAPI,
+        })
+    except net.HttpError as error:
+        raise SourceError(_rejected(error)) from error
+
+
+def _rejected(error):
+    """Say which kind of key problem this is, because they differ.
+
+    "It may need a key" is the wrong sentence to show somebody who has one.
+    A rejected key usually means it was rotated in the dashboard and siphon is
+    still holding the old one, and the remedy — paste the new secret — is
+    nothing like the remedy for having no key at all.
+    """
+    text = str(error)
+    if "refused" not in text and "401" not in text and "403" not in text:
+        return text
+    if credentials.get("tidal", "client_secret"):
+        # Not cached, so the next attempt asks for a fresh token rather than
+        # reusing one minted with the key that has just been rejected.
+        _token["value"], _token["expires"] = None, 0
+        return (
+            "Tidal rejected the key siphon has. If you rotated the secret in "
+            "the dashboard, paste the new one into Settings — or run "
+            "`siphon keys --set tidal.client_secret`, which asks for it "
+            "without echoing it."
+        )
+    return (
+        "Tidal needs a key and siphon does not have one. There is a free "
+        "developer app at developer.tidal.com/dashboard; the id and secret go "
+        "in Settings."
+    )
 
 
 # ---------------------------------------------------------------------------

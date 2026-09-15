@@ -251,6 +251,48 @@ class GettingTheWholeList(unittest.TestCase):
         self.assertEqual(len(got), 2, "a partial list beats no list")
 
 
+class ARejectedKeyIsNotAMissingKey(unittest.TestCase):
+    """Two different problems with two different remedies.
+
+    Written after a real rotation: the secret was changed in Tidal's
+    dashboard, siphon was still holding the old one, and the message it showed
+    was "it may need a key" — advice for somebody who has none, given to
+    somebody whose key was simply out of date.
+    """
+
+    def setUp(self):
+        import credentials
+        self.credentials = credentials
+        self.original = credentials.get
+
+    def tearDown(self):
+        self.credentials.get = self.original
+
+    def test_with_a_key_set_it_says_the_key_was_rejected(self):
+        self.credentials.get = lambda service, key: "something"
+        message = tidal._rejected(Exception("openapi.tidal.com refused the request."))
+        self.assertIn("rejected", message)
+        self.assertIn("rotated", message)
+        self.assertNotIn("does not have one", message)
+
+    def test_with_no_key_set_it_says_where_to_get_one(self):
+        self.credentials.get = lambda service, key: None
+        message = tidal._rejected(Exception("openapi.tidal.com refused the request."))
+        self.assertIn("developer.tidal.com", message)
+
+    def test_an_unrelated_failure_is_passed_through_unchanged(self):
+        self.credentials.get = lambda service, key: "something"
+        message = tidal._rejected(Exception("Could not reach openapi.tidal.com."))
+        self.assertIn("Could not reach", message)
+
+    def test_a_rejection_clears_the_cached_token(self):
+        """Otherwise the next call reuses a token minted with the dead key."""
+        self.credentials.get = lambda service, key: "something"
+        tidal._token["value"], tidal._token["expires"] = "stale", 9e9
+        tidal._rejected(Exception("refused the request"))
+        self.assertIsNone(tidal._token["value"])
+
+
 class WorkingOutTheCountry(unittest.TestCase):
     """Tidal's catalogue differs by territory, so this is not cosmetic."""
 

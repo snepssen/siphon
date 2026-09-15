@@ -238,7 +238,21 @@ def _bearer():
 def _api(path, **params):
     query = urllib.parse.urlencode(params) if params else ""
     url = f"{API}/{path}" + (f"?{query}" if query else "")
-    return net.get_json(url, headers={"Authorization": f"Bearer {_bearer()}"})
+    try:
+        return net.get_json(url,
+                            headers={"Authorization": f"Bearer {_bearer()}"})
+    except net.HttpError as error:
+        text = str(error)
+        if "refused" in text or "401" in text or "403" in text:
+            _token["value"], _token["expires"] = None, 0
+            raise SourceError(
+                "Spotify rejected the key siphon has. If you rotated the "
+                "secret, paste the new one into Settings — or run `siphon "
+                "keys --set spotify.client_secret`, which asks for it without "
+                "echoing it. siphon will fall back to the keyless embed in "
+                "the meantime, which sees no ISRCs and stops at fifty tracks."
+            ) from error
+        raise SourceError(text) from error
 
 
 def _from_api(kind, identifier, limit=None):
