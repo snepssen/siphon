@@ -278,6 +278,9 @@ class Handler(BaseHTTPRequestHandler):
             "items": [item.to_dict() for item in items],
             "collection": items[0].collection if items else None,
             "count": len(items),
+            # A source that could only see part of the list says so here, and
+            # the page shows it before anything is queued.
+            "notice": items[0].extra.get("truncated") if items else None,
         }
 
     def _add(self, body):

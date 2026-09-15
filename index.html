@@ -375,6 +375,7 @@ function showPreview(found) {
   }));
   $("preview-go").textContent = `Fetch all ${found.count}`;
   $("preview").hidden = false;
+  if (found.notice) flash(found.notice, "info");
 }
 
 function hidePreview() {

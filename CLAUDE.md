@@ -44,8 +44,16 @@ comparing packet checksums, not decoded audio — see the trap below.
 
 **Nothing is guessed silently.** `plan` returns a sentence and a list of
 reasons, and both are shown. A conversion that cannot be described in a
-sentence does not belong in the planner. When the resolver lands (phase 3), a
-weak track match is shown before it downloads, not after.
+sentence does not belong in the planner.
+
+The resolver keeps half of this and the half it keeps should be understood
+exactly. Below `resolve.FLOOR` nothing is downloaded and the near-miss is
+named. Between the floor and `CONFIDENT` the track *is* fetched, and the job
+notes that the match was uncertain along with the reasons and the runners-up —
+which is shown after it downloads, not before. The missing piece is a job
+state that waits for somebody to choose; `item.extra["match"]["alternatives"]`
+is already carried for exactly that, and until it exists this promise should
+not be described as fully kept.
 
 **The queue survives being closed.** Jobs are written to disk on every state
 change, and anything found still marked `running` at startup goes back to
@@ -103,6 +111,31 @@ a tool whose job is to read the file from disk. `pathFromDrop` decodes the
 URI; there is no fallback that could work, so the failure case says "paste the
 path instead" and names the Finder shortcut for copying one.
 
+**Deezer describes a playlist and an album differently.** A playlist's nested
+tracks carry `isrc` and `track_position`; an album's carry neither. So an
+album is listed from the order it arrives in and `deezer.enrich` fills in the
+rest one track at a time, from the resolver, only for tracks somebody actually
+fetches. Doing it at expand time would be a request per track at the moment
+somebody pastes a link, for data most of those tracks will never need.
+
+**Spotify's embed has two shapes.** An album or playlist puts its tracks in
+`entity.trackList`; a single track has no `trackList` at all and carries its
+fields at the top level, with the artist in `entity.artists` rather than
+`subtitle`. Handle both or track links fail with "nothing in it siphon can
+fetch", which is a confusing thing to be told about one track.
+
+**The embed also truncates at fifty and will not say so.** That is the most
+dangerous behaviour in this whole file: someone asks for a 200-track playlist,
+gets 50, and has no idea. `_from_embed` flags a page-sized result as possibly
+truncated and the CLI, the API and the page all surface it. Never remove that
+without replacing it with something better.
+
+**Opus cannot carry cover art here.** Ogg stores a picture as a base64 blob in
+a comment field and ffmpeg will not write it, so `ARTWORK_CONTAINERS` is mp3,
+m4a and flac only. Adding opus to that set would silently drop the artwork
+rather than embed it. Relatedly, mp4 has no standard ISRC atom, so an m4a
+loses the ISRC that a flac or an mp3 keeps.
+
 **Drain both pipes.** `_stream` in both `sources/ytdlp.py` and
 `engines/ffmpeg.py` reads stdout in the main thread and stderr in another. A
 pipe nobody is reading fills at 64 KB and the child blocks writing to it,
@@ -136,8 +169,9 @@ cannot yet handle should be a new module in `engines/` and one line in
 - **Phase 2, done.** The `127.0.0.1` window: live queue over server-sent
   events, playlist preview before committing, settings page generated from
   `credentials.status()`, drag-and-drop.
-- **Phase 3.** Music. Deezer first (its API needs no key), then Spotify, then
-  Tidal; `resolve.py` to match a catalogue track to a fetchable source by
-  ISRC, then by artist/title/duration; artwork embedding.
+- **Phase 3, in progress.** Deezer and Spotify done, with `resolve.py` and
+  artwork embedding. Tidal is not written yet. Neither is the confirmation
+  step for an uncertain match — see the promise below, which is currently only
+  half kept.
 - **Phase 4.** Breadth. ImageMagick, pandoc and Ghostscript engines; a
   self-hosted cobalt instance as a second fetch backend.

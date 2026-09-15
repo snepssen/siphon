@@ -26,7 +26,9 @@ import engines
 import formats
 import library
 import model
+import net
 import paths
+import resolve
 import sources
 from model import Job, Item
 
@@ -146,6 +148,24 @@ class Queue:
             target = formats.resolve(job.target)
             item = job.item
 
+            # ---- resolve -----------------------------------------------
+            # A catalogue item knows what it is and not where to get it.
+            if not item.url and not item.path:
+                job.stage = model.RESOLVE
+                job.message = "Looking for a source"
+                self._notify(force=True)
+                _enrich(item)
+                best = resolve.resolve(item)
+                if best.score >= resolve.CONFIDENT:
+                    job.note(f"matched to {best.display()} ({best.score:.0%})")
+                else:
+                    # Above the floor but not convincing. It proceeds, and it
+                    # says so — the alternatives are on the item for an
+                    # interface to offer.
+                    job.note(f"uncertain match ({best.score:.0%}): {best.display()}"
+                             f" — {', '.join(best.reasons)}")
+                self._check_cancelled(job)
+
             # ---- fetch -------------------------------------------------
             if item.path and not item.url:
                 source_path = item.path
@@ -174,6 +194,7 @@ class Queue:
             job.message = "Working out what needs doing"
             self._notify(force=True)
 
+            artwork = _artwork(item, workdir, target)
             engine = engines.choose(source_path, target, kind=item.kind)
             if engine is None:
                 raise engines.NoEngineFor(
@@ -188,7 +209,8 @@ class Queue:
             # overwrite a real title with a filename. ffmpeg's default is to
             # carry the existing tags across, which is exactly right here.
             fetched_metadata = None if (item.path and not item.url) else item
-            plan = engine.plan(source_path, target, metadata=fetched_metadata)
+            plan = engine.plan(source_path, target, metadata=fetched_metadata,
+                               artwork=artwork)
             job.message = plan.summary
             job.note(plan.summary)
             for line in plan.detail:
@@ -365,6 +387,41 @@ class Queue:
             self.on_change(self)
         except Exception:
             pass          # an interface that throws must not stop the queue
+
+
+def _enrich(item):
+    """Let a catalogue source fill in what its listing left out."""
+    if item.origin == "deezer":
+        from sources import deezer
+        deezer.enrich(item)
+    return item
+
+
+def _artwork(item, workdir, target):
+    """Cover art on disk, or None. Never a reason for a job to fail.
+
+    A missing cover is a worse file, not a broken one, so every failure here
+    returns None and the conversion carries on without it.
+    """
+    if not item.artwork_url or target.kind != formats.AUDIO:
+        return None
+    from engines.ffmpeg import ARTWORK_CONTAINERS
+    if target.container not in ARTWORK_CONTAINERS:
+        return None
+    try:
+        raw = net.get_bytes(item.artwork_url, timeout=20, retries=2)
+    except Exception:
+        return None
+    if not raw or len(raw) < 512:
+        return None
+    suffix = ".png" if raw[:8] == b"\x89PNG\r\n\x1a\n" else ".jpg"
+    path = Path(workdir) / f"cover{suffix}"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.write_bytes(raw)
+    except OSError:
+        return None
+    return str(path)
 
 
 class _Cancelled(Exception):

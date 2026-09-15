@@ -36,6 +36,11 @@ NONE = "none"
 COPY = "copy"
 ENCODE = "encode"
 
+# Containers that can carry a cover image. Opus is absent on purpose: Ogg
+# stores a picture as a base64 blob in a comment field, which ffmpeg will not
+# write, and pretending otherwise would mean silently dropping the art.
+ARTWORK_CONTAINERS = {"mp3", "m4a", "flac"}
+
 # Containers ffmpeg is the right tool for. Still images and documents belong
 # to other engines even where ffmpeg would technically produce a file.
 HANDLED_KINDS = {"audio", "video", "unknown", None}
@@ -117,11 +122,12 @@ def _is_cover(stream):
 # Deciding
 # ---------------------------------------------------------------------------
 
-def plan(source_path, target, metadata=None):
+def plan(source_path, target, metadata=None, artwork=None):
     """Compare what is in the file with what was asked for.
 
-    `metadata` is written in the same pass as the conversion rather than in a
-    tagging step afterwards. Tags live in the container, so writing them later
+    `artwork` is a path to a cover image to embed, for the containers that can
+    carry one. `metadata` is written in the same pass as the conversion rather
+    than in a tagging step afterwards. Tags live in the container, so writing them later
     means opening and rewriting the whole file a second time — for a two-hour
     video that is minutes of disk for a line of text. The one consequence is
     that a file which needed no conversion but does need tags becomes a copy
@@ -199,8 +205,9 @@ def plan(source_path, target, metadata=None):
     same_container = source_container == target.container
     dropping_video = bool(video) and target.audio_only
     tags = _metadata_args(metadata, target)
+    embedding = bool(artwork) and target.container in ARTWORK_CONTAINERS
     if (same_container and not reencodes_audio and not reencodes_video
-            and not dropping_video and not tags):
+            and not dropping_video and not tags and not embedding):
         return Plan(
             action=NONE, summary="Already in the requested format; left alone.",
             detail=["nothing to do: the file is already what was asked for"],
@@ -209,6 +216,8 @@ def plan(source_path, target, metadata=None):
 
     # ---- build the command ---------------------------------------------
     argv = ["-hide_banner", "-nostdin", "-y", "-i", source_path]
+    if embedding:
+        argv += ["-i", str(artwork)]
     maps, codecs = [], []
 
     if target.audio_only:
@@ -218,8 +227,12 @@ def plan(source_path, target, metadata=None):
             )
         maps += ["-map", "0:a:0"]
         codecs += _audio_codec_args(target, audio_action)
-        # Artwork survives into the containers that can carry it.
-        if covers and target.container in {"m4a", "mp3", "flac"}:
+        if embedding:
+            # A cover fetched from the catalogue beats whatever the video had.
+            maps += ["-map", "1:v:0"]
+            codecs += _artwork_codec_args(artwork)
+            detail.append("cover art embedded")
+        elif covers and target.container in ARTWORK_CONTAINERS:
             maps += ["-map", f"0:{covers[0]['index']}"]
             codecs += ["-c:v", "copy", "-disposition:v:0", "attached_pic"]
         else:
@@ -350,6 +363,13 @@ def _audio_codec_args(target, action):
     if target.abitrate and not target.lossless:
         argv += ["-b:a", target.abitrate]
     return argv
+
+
+def _artwork_codec_args(artwork):
+    """Copy a JPEG straight in; re-wrap anything else as one."""
+    suffix = str(artwork).lower().rsplit(".", 1)[-1]
+    codec = ["-c:v", "copy"] if suffix in {"jpg", "jpeg"} else ["-c:v", "mjpeg"]
+    return codec + ["-disposition:v:0", "attached_pic"]
 
 
 def _default_audio_codec(container):

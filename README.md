@@ -87,6 +87,52 @@ You can see the decision before committing to it:
 siphon plan recording.wav --as flac
 ```
 
+## Music
+
+Paste a Deezer or Spotify album, playlist or track. siphon reads the track
+list — titles, artists, running times, cover art, ISRCs — then finds each
+track something that will actually serve it, fetches that, tags it, embeds the
+cover and files it under the album.
+
+```sh
+siphon get 'https://www.deezer.com/album/302127' --as m4a
+```
+
+Deezer needs no key at all. Spotify works without one too, by reading the same
+embed its web player uses — but that path cannot see ISRCs and stops at fifty
+tracks of a long playlist, so siphon says when a list looks truncated rather
+than quietly handing you a fraction of it. A free developer key, pasted into
+Settings, switches to the proper API and the limits go away.
+
+### How a track is matched, and when it refuses
+
+This is the part worth understanding, because it is where a music downloader
+usually goes quietly wrong.
+
+The obvious approach is to search the title and take whatever is closest in
+length. That is wrong often enough to matter. Searching for Daft Punk's
+"Harder, Better, Faster, Stronger" — 226 seconds — returns the real track at
+223 seconds and an unrelated recording called "Daft Hands" at 225. The
+impostor is *closer*. A resolver that decides on running time picks it.
+
+So running time is worth a quarter of the score and never more. The rest is
+the title, and whether the artist is the one who uploaded it — an artist's own
+channel, or one of YouTube's auto-generated "- Topic" uploads, counts for a
+great deal. Karaoke, covers, live versions, 8D edits and sped-up uploads are
+penalised, unless the track you asked for is itself called that.
+
+Every match carries a confidence and its reasons:
+
+```
+100%  Harder, Better, Faster, Stronger -> Daft Punk    title matches, channel is the artist, length exact
+ 73%  (Daft Hands - Harder, Better...)               title matches, length exact
+ 49%  (Daft Punk - Around the World / Harder...)     length 19s out, looks like a live version
+```
+
+Below 50% nothing is downloaded and the closest miss is named instead. Between
+50% and 75% the track is fetched and the job says the match was uncertain and
+why. Above 75% it is acted on without comment.
+
 ## What it runs on
 
 Python 3.10 or newer, and two external programs it deliberately does not

@@ -147,6 +147,10 @@ def command_get(args):
         print(f"Nothing to fetch at {args.url}", file=sys.stderr)
         return 1
 
+    notice = items[0].extra.get("truncated")
+    if notice:
+        print(notice)
+
     if len(items) > 1:
         collection = items[0].collection
         for item in items:
@@ -211,6 +215,8 @@ def command_list(args):
         return 1
 
     collection = items[0].collection if items else None
+    if items and items[0].extra.get("truncated"):
+        print(items[0].extra["truncated"] + "\n")
     if collection:
         print(f"{collection} — {len(items)} items\n")
     for index, item in enumerate(items, start=1):
