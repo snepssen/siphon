@@ -365,22 +365,63 @@ def command_check(_args):
 def command_keys(args):
     """API keys: what is set, how to set it, and where to go and get it."""
     if args.set:
-        try:
-            service, field = args.set.split(".", 1)
-        except ValueError:
-            print("Use service.field, for example spotify.client_id",
+        # A whole service, or one field of it. Naming just the service asks
+        # for every field in turn, which is what rotating a key actually
+        # needs: on Tidal — and anywhere else that rotates by deleting the app
+        # and making a new one — the id changes along with the secret, so
+        # replacing only the secret leaves a pair that never matched.
+        service, _, field = args.set.partition(".")
+        definition = credentials.SERVICES.get(service)
+        if definition is None:
+            known = ", ".join(sorted(credentials.SERVICES))
+            print(f"No service called {service!r}. Known: {known}",
                   file=sys.stderr)
             return 2
-        value = args.value
-        if value is None:
-            import getpass
-            value = getpass.getpass(f"{service}.{field}: ")
-        try:
-            credentials.set(service, field, value)
-        except KeyError as error:
-            print(error, file=sys.stderr)
+
+        fields = [f for f in definition.fields if not field or f.key == field]
+        if field and not fields:
+            names = ", ".join(f.key for f in definition.fields)
+            print(f"{definition.label} has no field called {field!r}. "
+                  f"It has: {names}", file=sys.stderr)
             return 2
-        print(f"Saved {service}.{field}.")
+
+        if args.value is not None:
+            if len(fields) != 1:
+                print("--value sets one field, so name it: "
+                      f"{service}.{fields[0].key}", file=sys.stderr)
+                return 2
+            credentials.set(service, fields[0].key, args.value)
+            print(f"Saved {service}.{fields[0].key}.")
+            return 0
+
+        import getpass
+        print(f"{definition.label} — leave a line empty to keep what is there.")
+        saved = []
+        for entry in fields:
+            prompt = f"  {entry.label}: "
+            # Only the secrets are hidden. Echoing a client id lets somebody
+            # see they pasted the right one, and hiding it helps nobody.
+            try:
+                value = (getpass.getpass(prompt) if entry.secret
+                         else input(prompt)).strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return 130
+            if not value:
+                continue
+            credentials.set(service, entry.key, value)
+            saved.append(entry.key)
+
+        if not saved:
+            print("Nothing changed.")
+            return 0
+        print(f"Saved {', '.join(saved)}.")
+        if credentials.have(service):
+            print(f"{definition.label} is complete.")
+        else:
+            outstanding = [f.key for f in definition.fields
+                           if f.required and not credentials.get(service, f.key)]
+            print(f"Still missing: {', '.join(outstanding)}")
         return 0
 
     if args.clear:
