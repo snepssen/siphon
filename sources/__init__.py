@@ -30,6 +30,26 @@ def modules():
     return [_module(name) for name in ORDER]
 
 
+def module_for(name):
+    """The source module a given origin came from, or None."""
+    if name in ORDER:
+        return _module(name)
+    return None
+
+
+def fetcher_for(item):
+    """How to get this item's bytes.
+
+    A source that hands back a plain address may say how to fetch it; anything
+    that does not gets yt-dlp, which is the right answer for almost everything.
+    """
+    module = module_for(item.origin)
+    found = getattr(module, "fetch", None) if module else None
+    if found is not None:
+        return found
+    return _module("ytdlp").fetch
+
+
 def identify(target):
     """The source module that claims this URL or path, or None."""
     text = str(target).strip()

@@ -162,6 +162,28 @@ For unattended runs, `--pick best` takes the top match without asking and
 terminal to ask, siphon takes the best rather than hanging on a prompt nobody
 can see.
 
+## Getting what it needs
+
+`./start.sh` checks before it opens anything, and offers to install whatever
+is missing. Pressing return installs all of it.
+
+```
+siphon needs a few programs it does not ship.
+
+  ffmpeg     needed  — converting audio and video, and muxing what yt-dlp fetches
+  magick     extra   — still image formats ffmpeg handles badly or not at all
+
+  brew install ffmpeg
+  brew install imagemagick
+
+Install all 2 of these with Homebrew? [Y/n]
+```
+
+`siphon setup` asks again at any time, and the same offer appears in the
+window's settings with a button. On a system whose package manager needs root,
+siphon prints the command rather than running it — it will not invoke `sudo`
+on your behalf.
+
 ## What it runs on
 
 Python 3.10 or newer, and two external programs it deliberately does not
@@ -208,13 +230,23 @@ their pages; it does not pretend to un-print them.
 
 ## A second way to fetch
 
-If you run your own [cobalt](https://github.com/imputnet/cobalt) instance, put
-its address in Settings and prefix a link with `cobalt:` to fetch it that way
-instead:
+siphon can install and run its own [cobalt](https://github.com/imputnet/cobalt)
+— from source, no Docker:
 
 ```sh
-siphon get 'cobalt:https://www.instagram.com/p/…'
+siphon cobalt start        # fetches it, installs it, runs it on 127.0.0.1:9000
+siphon get 'cobalt:https://…'
 ```
+
+It binds the loopback address only, and `siphon cobalt remove` deletes it and
+everything it pulled in. The buttons in Settings do the same thing.
+
+Two honest notes. cobalt's own native dependency does not build against the
+very newest Node, so siphon looks for an LTS one beside it (`brew install
+node@22`) and uses that for cobalt alone. And cobalt's **YouTube** path needs
+a separate token provider running alongside it — without that it returns an
+empty file. That is precisely why siphon fetches with yt-dlp by default; use
+cobalt for the sites where yt-dlp is the one having a bad week.
 
 They fail differently — two implementations of the same awkward job, written
 by different people against the same moving targets — so a site that has

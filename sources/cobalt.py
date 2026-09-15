@@ -78,14 +78,53 @@ def expand(url, **_options):
     payload = _ask(address, target)
     direct, filename = _interpret(payload, target)
 
+    # cobalt's filename already carries an extension; the library adds the
+    # target's. Left alone that produces "track.mp3.mp3".
+    title = filename or target
+    if filename and "." in filename[-6:]:
+        title = filename.rsplit(".", 1)[0]
+
     return [Item(
         origin="cobalt",
         url=direct,
         kind="video",
-        title=filename or target,
+        title=title,
         webpage_url=target,
         extra={"via": "cobalt", "instance": address, "source_url": target},
     )]
+
+
+def fetch(item, target, workdir, on_progress=None, should_cancel=None,
+          options=None):
+    """Download what cobalt handed back. Returns the path written.
+
+    A plain HTTP GET on purpose. cobalt has already done the extraction and
+    what is left is a file at an address; handing that to yt-dlp asks an
+    extractor to extract a file, and on a one-shot tunnel it fails with "Did
+    not get any data blocks" — which reads like a network fault rather than
+    the wrong tool.
+    """
+    from pathlib import Path
+
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    name = _safe(item.title) or "download"
+    try:
+        return net.download(item.url, workdir / name,
+                            on_progress=on_progress,
+                            should_cancel=should_cancel)
+    except net.Cancelled:
+        raise
+    except net.HttpError as error:
+        raise SourceError(f"cobalt handed over an address that did not work: {error}")
+
+
+def _safe(name):
+    from paths import safe_name
+    cleaned = safe_name(name or "", fallback="download")
+    # cobalt puts the whole title and the format in the filename; the
+    # extension is the part the converter needs.
+    return cleaned if "." in cleaned[-6:] else cleaned + ".bin"
 
 
 def _ask(address, target, extra=None):
@@ -97,8 +136,12 @@ def _ask(address, target, extra=None):
     body = {"url": target}
     body.update(extra or {})
     try:
+        # accept_errors, because cobalt says what went wrong in a JSON body
+        # attached to a 400. Treating that as an unreachable host reports
+        # "is it running?" about an instance that just answered.
         return net.get_json(f"{address}/", headers=headers, timeout=TIMEOUT,
-                            retries=2, data=json.dumps(body).encode("utf-8"))
+                            retries=2, data=json.dumps(body).encode("utf-8"),
+                            accept_errors=True)
     except net.HttpError as error:
         raise SourceError(
             f"Could not reach your cobalt instance at {address}. {error} "

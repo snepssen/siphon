@@ -9,6 +9,21 @@ bite you if you don't know it.
 
 ---
 
+## The convention this belongs to
+
+Every tool here is self-contained: a start script, and dependencies **offered
+to be installed** rather than reported, with the default answer being yes to
+all of them. Docker is not an acceptable dependency — a component that
+normally ships as a container gets run from source instead.
+
+That is what `bootstrap.py` and `cobalt_service.py` are for, and `start.sh`
+asks before the window ever fails to appear. The rule it enforces: siphon
+never runs `sudo` on anybody's behalf, so a package manager that needs root
+gets its command printed rather than executed.
+
+`media-preflight` only prints install lines. It predates this and has not been
+brought up to it.
+
 ## The scope fence
 
 **Do not build these. They are not oversights.**
@@ -125,6 +140,41 @@ completed. The `paused` flag exists for that and nothing else. A test asserts
 the job's own `choice["options"]` and refuses anything else, so the window's
 `/api/choose` cannot be talked into fetching an arbitrary address by a request
 that did not come from the page. There is a test for it.
+
+**cobalt will not run on the newest Node.** It depends on `isolated-vm`, a
+native module compiled against V8's internals, which lags Node majors by
+months — it does not build against Node 26 at all, and ships prebuilts for
+Linux only. So `cobalt_service.node_bin()` looks for a keg-only `node@22`
+beside the current one and uses it for cobalt alone, without changing what
+`node` means anywhere else. The Node that builds must be the Node that runs:
+a module compiled by one and loaded by another fails with "No native build was
+found", which reads like a missing download rather than a version mismatch.
+
+**cobalt is a pnpm workspace, and npm cannot install it.** Its api depends on
+a sibling as `workspace:^`, a protocol npm rejects outright with
+EUNSUPPORTEDPROTOCOL. Node ships corepack, which would solve this, but it is
+not on the PATH of a current install — so pnpm is simply another thing siphon
+offers to fetch. Do not add `--ignore-scripts` to that install: isolated-vm
+compiles at install time, and skipping it leaves a node_modules that looks
+complete and fails at the first import.
+
+**cobalt's tunnels are not for yt-dlp.** cobalt hands back a plain address it
+has already done the extraction for; putting that through yt-dlp asks an
+extractor to extract a file, and on a one-shot tunnel it gives up with "Did
+not get any data blocks" — which reads like a network fault. `sources.cobalt`
+has its own `fetch`, and `sources.fetcher_for` is how the pipeline asks a
+source whether it would rather fetch its own bytes.
+
+**cobalt explains itself in the body of a 400.** `net.get_json(...,
+accept_errors=True)` is why: without it a perfectly healthy instance
+answering "that link is invalid" was reported as "could not reach your cobalt
+instance — is it running?".
+
+**cobalt's YouTube needs more than cobalt.** A local instance returns a tunnel
+for a YouTube link and then streams zero bytes, because that path wants a
+`bgutil` po_token provider running alongside. This is not a fault in siphon
+and not worth working around — it is the reason siphon uses yt-dlp by default
+and offers cobalt for the sites where yt-dlp is the one struggling.
 
 **Two engines claim images, and the order decides.** ImageMagick goes first
 and takes them when it is installed; ffmpeg picks up what is left when it is
@@ -305,12 +355,9 @@ cannot yet handle should be a new module in `engines/` and one line in
   embedding, and the confirmation step for uncertain matches in both the
   terminal and the window. The one gap is Tidal's playlist path, which needs a
   real playlist link to verify.
-- **Phase 4, done bar verification.** ImageMagick, pandoc and Ghostscript
-  engines, images and documents in the format catalogue, and cobalt as a
-  second fetch backend. Two things unverified: ImageMagick is not installed on
-  this machine, so its engine is exercised only by tests that skip; and
-  **cobalt's request path has never met a real instance** — the docker daemon
-  was not running — so only `_interpret` is tested, from fixtures of its
-  documented answers.
+- **Phase 4, done and verified.** ImageMagick, pandoc and Ghostscript engines,
+  images and documents in the catalogue, cobalt as a second fetch backend, and
+  `bootstrap.py` — which is the convention the whole family follows and the
+  thing to copy into the next tool.
 - **Phase 4.** Breadth. ImageMagick, pandoc and Ghostscript engines; a
   self-hosted cobalt instance as a second fetch backend.

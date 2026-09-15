@@ -1,6 +1,9 @@
 #!/bin/sh
-# Starts siphon, checking first for the two programs it needs and does not
-# ship, so that a missing ffmpeg is a sentence rather than a traceback.
+# Starts siphon, and offers to install anything it needs first.
+#
+# The check is separate from the offer on purpose: somebody who already has
+# everything should see the window, not a question. Only a missing program
+# turns this into a conversation, and the default answer to that is yes.
 cd "$(dirname "$0")" || exit 1
 
 for candidate in python3 python; do
@@ -13,7 +16,13 @@ done
 
 if [ -z "${PYTHON:-}" ]; then
   echo "siphon needs Python 3.10 or newer, and could not find one." >&2
+  echo "On macOS:  brew install python" >&2
   exit 1
+fi
+
+# Exit 0 means everything required is present. Anything else, ask.
+if ! "$PYTHON" bootstrap.py --check; then
+  "$PYTHON" bootstrap.py || exit 1
 fi
 
 exec "$PYTHON" siphon.py "$@"

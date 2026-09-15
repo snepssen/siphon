@@ -420,6 +420,57 @@ def command_window(args):
                      workers=args.workers)
 
 
+def command_setup(args):
+    """Offer to install everything siphon needs and does not ship."""
+    import bootstrap
+    return 0 if bootstrap.offer(assume_yes=args.yes) else 1
+
+
+def command_cobalt(args):
+    """Install, start, stop or check a local cobalt — no Docker involved."""
+    import cobalt_service as service
+
+    if args.action == "status":
+        state = service.status()
+        print(f"installed : {'yes' if state['installed'] else 'no'}  "
+              f"({state['path']})")
+        print(f"running   : {'yes' if state['running'] else 'no'}  "
+              f"{state['url']}")
+        if state["version"]:
+            print(f"version   : cobalt {state['version']}")
+        if state["node"]:
+            print(f"node      : {state['node']}")
+        if state["missing"]:
+            print(f"missing   : {', '.join(state['missing'])} — "
+                  f"run `siphon setup`")
+        return 0
+
+    if args.action == "install":
+        ok, detail = service.install(on_line=print, update=args.update)
+        print(detail)
+        return 0 if ok else 1
+
+    if args.action == "start":
+        ok, detail = service.ensure(on_line=print)
+        print(detail)
+        if ok:
+            credentials.set("cobalt", "instance_url", detail)
+            print("Saved as siphon's cobalt instance. Prefix a link with "
+                  "`cobalt:` to fetch it that way.")
+        return 0 if ok else 1
+
+    if args.action == "stop":
+        print("Stopped." if service.stop() else "It was not running.")
+        return 0
+
+    if args.action == "remove":
+        service.remove()
+        print("Removed cobalt and everything it installed.")
+        return 0
+
+    return 2
+
+
 def command_plan(args):
     """Say what would be done to a file, and do none of it."""
     try:
@@ -492,6 +543,18 @@ def build_parser():
                         help="start the server without opening a browser")
     window.add_argument("-j", "--workers", type=int, default=2)
     window.set_defaults(handler=command_window)
+
+    setup = sub.add_parser("setup", help="install what siphon needs")
+    setup.add_argument("-y", "--yes", action="store_true",
+                       help="install everything without asking")
+    setup.set_defaults(handler=command_setup)
+
+    cob = sub.add_parser("cobalt", help="run your own cobalt, without Docker")
+    cob.add_argument("action", nargs="?", default="status",
+                     choices=("status", "install", "start", "stop", "remove"))
+    cob.add_argument("--update", action="store_true",
+                     help="for install: pull cobalt's latest source first")
+    cob.set_defaults(handler=command_cobalt)
 
     fmt = sub.add_parser("formats", help="list the target formats")
     fmt.set_defaults(handler=command_formats)

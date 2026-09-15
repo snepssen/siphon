@@ -115,6 +115,9 @@
            background: color-mix(in srgb, var(--fail) 12%, transparent); color: var(--fail); }
   .flash.info { background: color-mix(in srgb, var(--accent) 12%, transparent);
                 color: var(--accent); }
+  pre.mono { background: var(--code); border: 1px solid var(--line);
+             border-radius: 7px; padding: 10px; max-height: 180px;
+             overflow: auto; white-space: pre-wrap; margin: 10px 0 0; }
 </style>
 
 <main>
@@ -173,6 +176,21 @@
   <section class="panel" id="settings" hidden>
     <h2>Programs</h2>
     <div id="programs"></div>
+    <div id="install-offer" hidden>
+      <p class="note" id="install-what">—</p>
+      <div class="row">
+        <button class="primary" id="install-all">Install them</button>
+      </div>
+      <pre class="mono" id="install-log" hidden></pre>
+    </div>
+
+    <h2 style="margin-top:22px">Your own cobalt</h2>
+    <p class="note" style="margin-top:-6px">
+      A second way to fetch, for when a site has broken for yt-dlp. siphon
+      installs and runs it from source — no Docker.
+    </p>
+    <div id="cobalt-state" class="prog"><span class="n">status</span><span class="missing">checking…</span></div>
+    <div class="row" id="cobalt-actions"></div>
 
     <h2 style="margin-top:22px">Keys</h2>
     <p class="note" style="margin-top:-6px" id="storage-note">—</p>
@@ -475,6 +493,75 @@ function renderPrograms(programs) {
   $("programs").replaceChildren(...rows);
 }
 
+function renderInstallOffer(installable) {
+  // The whole point: a missing program is a button, not a sentence telling
+  // somebody to go and read a README.
+  const box = $("install-offer");
+  if (!installable || !installable.missing?.length) { box.hidden = true; return; }
+
+  const list = installable.missing.map((m) => m.key);
+  const names = list.join(", ");
+  const one = list.length === 1;
+  const is = one ? "is" : "are";
+  const them = one ? "it" : "them";
+
+  if (!installable.manager) {
+    $("install-what").textContent =
+      `${names} ${is} missing, and siphon could not find a package manager to ` +
+      `install ${them} with. On macOS, Homebrew is the usual one: brew.sh`;
+    $("install-all").hidden = true;
+  } else if (installable.needs_root) {
+    $("install-what").textContent =
+      `${names} ${is} missing. Installing ${them} needs root, and siphon will ` +
+      `not run sudo for you — in a terminal: ` +
+      installable.missing.map((m) => m.command).join(" ; ");
+    $("install-all").hidden = true;
+  } else {
+    $("install-what").textContent =
+      `${names} ${is} missing. siphon can install ${them} with ${installable.label}.`;
+    $("install-all").hidden = false;
+    $("install-all").textContent = one ? `Install ${names}` : "Install all of them";
+  }
+  box.hidden = false;
+}
+
+async function renderCobalt() {
+  const state = await api("/api/cobalt");
+  const line = $("cobalt-state");
+  const bits = [];
+  bits.push(state.installed ? "installed" : "not installed");
+  if (state.running) bits.push(`running — cobalt ${state.version || ""}`.trim());
+  if (state.node) bits.push(`node ${state.node}`);
+  if (state.missing?.length) bits.push(`needs ${state.missing.join(", ")}`);
+  line.replaceChildren(
+    Object.assign(document.createElement("span"), {className: "n", textContent: "status"}),
+    Object.assign(document.createElement("span"),
+                  {className: state.running ? "ok" : "missing",
+                   textContent: bits.join(" · ")}));
+
+  const actions = $("cobalt-actions");
+  const buttons = [];
+  if (!state.installed) {
+    buttons.push(["Install it", {action: "install"}]);
+  } else if (state.running) {
+    buttons.push(["Stop", {action: "stop"}], ["Update", {action: "install", update: true}]);
+  } else {
+    buttons.push(["Start", {action: "start"}], ["Update", {action: "install", update: true}]);
+  }
+  if (state.installed) buttons.push(["Remove", {action: "remove"}]);
+
+  actions.replaceChildren(...buttons.map(([label, body]) => {
+    const element = button(label, async () => {
+      flash(`${label}… this can take a minute the first time.`, "info");
+      const result = await api("/api/cobalt", body);
+      flash(result.detail || "", result.ok ? "info" : "error");
+      await renderCobalt();
+    });
+    element.className = label === "Remove" ? "quiet" : "";
+    return element;
+  }));
+}
+
 async function renderSettings() {
   const settings = await api("/api/settings");
   $("storage-note").textContent = `Kept in ${settings.storage}. Never printed, never sent anywhere but to the service it belongs to.`;
@@ -640,6 +727,7 @@ async function start() {
   describe();
 
   renderPrograms(initial.programs);
+  renderInstallOffer(initial.installable);
   render();
   listen();
 }
@@ -663,12 +751,38 @@ $("preview-go").addEventListener("click", async () => {
   }
   go.disabled = false;
 });
+$("install-all").addEventListener("click", async () => {
+  const go = $("install-all");
+  const log = $("install-log");
+  go.disabled = true;
+  go.textContent = "Installing…";
+  log.hidden = false;
+  log.textContent = "This can take a few minutes. Nothing else is waiting on it.";
+  try {
+    const result = await api("/api/install", {});
+    const lines = [];
+    if (result.installed?.length) lines.push(`Installed: ${result.installed.join(", ")}`);
+    for (const failure of result.failed || []) {
+      lines.push(`Could not install ${failure.key}: ${failure.why}`);
+    }
+    log.textContent = lines.join("\n") || "Nothing to do.";
+    renderPrograms(result.programs);
+    renderInstallOffer(result.installable);
+  } catch (error) {
+    log.textContent = error.message;
+  }
+  go.disabled = false;
+});
+
 $("forget").addEventListener("click", () => api("/api/forget", {}).catch(() => {}));
 $("toggle-settings").addEventListener("click", async () => {
   const panel = $("settings");
   panel.hidden = !panel.hidden;
   if (!panel.hidden) {
-    try { await renderSettings(); } catch (error) { flash(error.message); }
+    try {
+      await renderSettings();
+      await renderCobalt();
+    } catch (error) { flash(error.message); }
   }
 });
 

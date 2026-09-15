@@ -209,6 +209,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self._state())
         if route == "/api/settings":
             return self._json(credentials.status())
+        if route == "/api/cobalt":
+            import cobalt_service
+            return self._json(cobalt_service.status())
         if route == "/api/events":
             return self._events()
         return self._fail("No such thing here.", 404)
@@ -238,6 +241,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
             if route == "/api/settings":
                 return self._json(self._settings(body))
+            if route == "/api/install":
+                return self._json(self._install(body))
+            if route == "/api/cobalt":
+                return self._json(self._cobalt(body))
             if route == "/api/reveal":
                 return self._json({"ok": _reveal(body.get("path"))})
             if route == "/api/quit":
@@ -264,6 +271,7 @@ class Handler(BaseHTTPRequestHandler):
             "default_format": formats.DEFAULT_PRESET,
             "programs": platform_support.survey(),
             "output": str(paths.output_dir()),
+            "installable": _installable(),
         }
 
     def _expand(self, body):
@@ -311,6 +319,61 @@ class Handler(BaseHTTPRequestHandler):
             created = _queue.add_url(target, fmt, output=output)
         return {"added": len(created), "jobs": [j.to_dict() for j in created]}
 
+    def _install(self, body):
+        """Install missing programs, on request from the page."""
+        import bootstrap
+        import platform_support as programs
+
+        manager = programs.current_manager()
+        if manager is None:
+            raise RuntimeError(
+                "siphon could not find a package manager to install with. "
+                "On macOS, Homebrew is the usual one: https://brew.sh"
+            )
+        if programs.MANAGERS[manager]["needs_root"]:
+            raise RuntimeError(
+                "Installing these needs root, and siphon will not run sudo "
+                "for you. `siphon setup` prints the command to run."
+            )
+
+        wanted = set(body.get("keys") or [])
+        chosen = [p for p in programs.missing()
+                  if not wanted or p.key in wanted]
+        if not chosen:
+            return {"installed": [], "failed": [], "programs": programs.survey()}
+
+        results = bootstrap.install(chosen, manager)
+        programs.forget()
+        return {
+            "installed": [p.key for p, ok, _ in results if ok],
+            "failed": [{"key": p.key, "why": why}
+                       for p, ok, why in results if not ok],
+            "programs": programs.survey(),
+            "installable": _installable(),
+        }
+
+    def _cobalt(self, body):
+        """Install, start or stop the local cobalt instance."""
+        import cobalt_service
+
+        action = body.get("action")
+        if action == "install":
+            ok, detail = cobalt_service.install(update=bool(body.get("update")))
+        elif action == "start":
+            ok, detail = cobalt_service.ensure()
+            if ok:
+                credentials.set("cobalt", "instance_url", detail)
+        elif action == "stop":
+            ok, detail = cobalt_service.stop(), "Stopped."
+        elif action == "remove":
+            cobalt_service.remove()
+            ok, detail = True, "Removed."
+        else:
+            raise ValueError("Unknown cobalt action.")
+        state = cobalt_service.status()
+        state.update({"ok": bool(ok), "detail": detail})
+        return state
+
     def _settings(self, body):
         service = body.get("service")
         field = body.get("field")
@@ -352,6 +415,21 @@ class Handler(BaseHTTPRequestHandler):
             pass          # the tab was closed; that is not an error
         finally:
             _drop(listener)
+
+
+def _installable():
+    """What could be installed from here, and with what."""
+    import platform_support as programs
+    manager = programs.current_manager()
+    absent = programs.missing()
+    return {
+        "manager": manager,
+        "label": programs.MANAGERS[manager]["label"] if manager else None,
+        "needs_root": programs.MANAGERS[manager]["needs_root"] if manager else False,
+        "missing": [{"key": p.key, "purpose": p.purpose,
+                     "required": p.required, "command": p.install_line()}
+                    for p in absent],
+    }
 
 
 def _reveal(path):

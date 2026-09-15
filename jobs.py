@@ -185,8 +185,8 @@ class Queue:
                 job.stage = model.FETCH
                 job.message = "Fetching"
                 self._notify(force=True)
-                from sources import ytdlp
-                source_path = ytdlp.fetch(
+                fetch = sources.fetcher_for(item)
+                source_path = fetch(
                     item, target, workdir,
                     on_progress=lambda u: self._progress(job, u),
                     should_cancel=lambda: job.id in self._cancelled,
