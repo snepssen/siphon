@@ -489,8 +489,34 @@ ancestor — so it scrolled away with the header while every sibling's stayed
 put. Nobody wrote that bug on purpose; it is what copying a layout by hand
 does.
 
-`build.py` and `ecosystem.json` are meant to be copied into the siblings. They
-have not been yet — those pages are still hand-written.
+`build.py` and `ecosystem.json` are copied byte-identically into every sibling
+repo; `cmp` is the test. All five project pages are generated now, and the
+sixth is partly.
+
+A section may carry structured **`blocks`** or a **`body`** naming an HTML
+partial in `docs/sections/`. Both exist because the pages differ honestly.
+siphon's content is prose, figures and cards, which are regular enough to be
+worth having as data. Media Preflight's is meters, waveform strips and
+annotated report windows — markup whose shape *is* the content, which in a
+Python string would lose every bit of editor help and gain nothing. The rule:
+the chrome is generated because the chrome is what drifts; a hand-drawn
+diagram is not improved by being retyped as a dict.
+
+**tools-core is the exception, deliberately.** It is the hub, not a project
+page: a hero, a site navigation, sections that each carry their own `.wrap`,
+no jump bar. Putting it through `build.py` would mean five special cases only
+that page uses, which is the coupling this whole arrangement exists to avoid.
+Instead `docs/sync.py` there rewrites just the two regions it genuinely
+shares — the rail and the ecosystem grid — from the same `ecosystem.json` and
+the same `build.py` functions, and leaves the rest hand-written.
+
+Converting the siblings turned up the same class of bug in three more places:
+Gateway Forge and Voice Forge had the jump nav nested inside `.wrap` (doubled
+padding, and a sticky bar that stopped short of the window edges), every page
+was missing `aria-current` on its own ecosystem card although `ecosystem.css`
+has always styled it, and siphon's own footer carried `class="contact"` — a
+flex row meant for link buttons — which laid its two closing lines out
+abreast. None of those were written on purpose.
 
 ## Screenshots
 
