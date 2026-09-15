@@ -170,11 +170,43 @@ accept_errors=True)` is why: without it a perfectly healthy instance
 answering "that link is invalid" was reported as "could not reach your cobalt
 instance — is it running?".
 
-**cobalt's YouTube needs more than cobalt.** A local instance returns a tunnel
-for a YouTube link and then streams zero bytes, because that path wants a
-`bgutil` po_token provider running alongside. This is not a fault in siphon
-and not worth working around — it is the reason siphon uses yt-dlp by default
-and offers cobalt for the sites where yt-dlp is the one struggling.
+**cobalt's YouTube is broken upstream, and the token provider does not fix
+it.** This was chased a long way, so the findings are here rather than in
+somebody's afternoon:
+
+  * A local cobalt returns a tunnel for a YouTube link and streams zero bytes,
+    logging nothing. The same tunnel serves SoundCloud 2.8 MB, so the tunnel
+    machinery is fine and the fault is YouTube-specific.
+  * It needs a poToken, and `pot_provider` now supplies one — cobalt logs
+    "poToken & visitor_data loaded successfully!". **The tunnel is still
+    empty.** The token was necessary and is not sufficient.
+  * `CUSTOM_INNERTUBE_CLIENT=ANDROID_VR`, the fix candidate in
+    imputnet/cobalt#1581, does not help here either.
+  * It is a known open bug for self-hosters: imputnet/cobalt#1465 ("Youtube 0
+    byte file download") and #1475, open since November 2025.
+
+So do not spend another day on it. yt-dlp fetches YouTube perfectly and is
+unaffected; cobalt is for the sites where yt-dlp is the one having a bad week.
+The provider is still worth having — it works, and it is the same provider
+yt-dlp's own plugin uses if YouTube ever does start demanding tokens there.
+
+**cobalt asks for tokens the way bgutil cannot answer.** cobalt's docs name
+imputnet's `yt-session-generator`, which serves `/token`; cobalt's code POSTs
+to `/get_pot` and its `validateSession` reads `poToken` and `contentBinding` —
+bgutil's field names. Reading the code settles what the docs confuse. That
+generator was tried first and is also simply stale: it drives a real Chrome,
+clicks the embedded player and waits for a POST to `/youtubei/v1/player`
+carrying the token, and YouTube's embed no longer makes that request — the
+BotGuard call (`jnn-pa.googleapis.com/…/Waa/GenerateIT`) fires but the watched
+request never does.
+
+**The last gap between them is a Content-Type.** cobalt POSTs `/get_pot` with
+no body and no headers at all; bgutil requires `Content-Type: application/json`
+and returns 415 without it, which cobalt reports as "no poToken in session
+response" — a sentence that points at the token rather than at the request.
+`pot_provider.serve_bridge` is the fifty lines that join them, and
+`tests/test_tokens.py` pins both halves, including a transcription of cobalt's
+own validator so the shape is checked against what consumes it.
 
 **Two engines claim images, and the order decides.** ImageMagick goes first
 and takes them when it is installed; ffmpeg picks up what is left when it is
@@ -355,6 +387,9 @@ cannot yet handle should be a new module in `engines/` and one line in
   embedding, and the confirmation step for uncertain matches in both the
   terminal and the window. The one gap is Tidal's playlist path, which needs a
   real playlist link to verify.
+- **Tokens.** `pot_provider.py` runs bgutil and a bridge in front of it, so
+  cobalt gets real poTokens. It does not make cobalt's YouTube work — see
+  below — but it is correct, tested, and the piece anything else would need.
 - **Phase 4, done and verified.** ImageMagick, pandoc and Ghostscript engines,
   images and documents in the catalogue, cobalt as a second fetch backend, and
   `bootstrap.py` — which is the convention the whole family follows and the

@@ -471,6 +471,31 @@ def command_cobalt(args):
     """Install, start, stop or check a local cobalt — no Docker involved."""
     import cobalt_service as service
 
+    if args.action == "tokens":
+        import pot_provider
+        if args.tokens_action == "install":
+            ok, detail = pot_provider.install(on_line=print, update=args.update)
+        elif args.tokens_action == "start":
+            ok, detail = pot_provider.ensure(on_line=print)
+        elif args.tokens_action == "stop":
+            ok, detail = pot_provider.stop(), "Stopped."
+        elif args.tokens_action == "remove":
+            pot_provider.remove()
+            ok, detail = True, "Removed."
+        else:
+            state = pot_provider.status()
+            print(f"installed : {'yes' if state['installed'] else 'no'}  "
+                  f"({state['path']})")
+            print(f"running   : {'yes' if state['running'] else 'no'}  "
+                  f"{state['url']}")
+            print(f"bridge    : {'yes' if state['bridged'] else 'no'}  "
+                  f"{state['session_server']}")
+            if state["missing"]:
+                print(f"missing   : {', '.join(state['missing'])}")
+            return 0
+        print(detail)
+        return 0 if ok else 1
+
     if args.action == "status":
         state = service.status()
         print(f"installed : {'yes' if state['installed'] else 'no'}  "
@@ -481,9 +506,18 @@ def command_cobalt(args):
             print(f"version   : cobalt {state['version']}")
         if state["node"]:
             print(f"node      : {state['node']}")
+        tokens = state.get("tokens") or {}
+        print(f"tokens    : "
+              f"{'running' if tokens.get('running') else 'not running'}"
+              f"{' · bridged' if tokens.get('bridged') else ''}")
         if state["missing"]:
             print(f"missing   : {', '.join(state['missing'])} — "
                   f"run `siphon setup`")
+        if tokens.get("running"):
+            print("\nNote: YouTube through cobalt returns an empty file even "
+                  "with tokens —\nan open cobalt bug for self-hosters "
+                  "(imputnet/cobalt#1465, #1475).\nsiphon fetches YouTube "
+                  "with yt-dlp, which is unaffected.")
         return 0
 
     if args.action == "install":
@@ -592,9 +626,14 @@ def build_parser():
 
     cob = sub.add_parser("cobalt", help="run your own cobalt, without Docker")
     cob.add_argument("action", nargs="?", default="status",
-                     choices=("status", "install", "start", "stop", "remove"))
+                     choices=("status", "install", "start", "stop", "remove",
+                              "tokens"))
+    cob.add_argument("tokens_action", nargs="?", default="status",
+                     choices=("status", "install", "start", "stop", "remove"),
+                     help="for `cobalt tokens`: what to do with the "
+                          "YouTube token provider")
     cob.add_argument("--update", action="store_true",
-                     help="for install: pull cobalt's latest source first")
+                     help="for install: pull the latest source first")
     cob.set_defaults(handler=command_cobalt)
 
     fmt = sub.add_parser("formats", help="list the target formats")

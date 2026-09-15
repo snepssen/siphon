@@ -241,12 +241,22 @@ siphon get 'cobalt:https://…'
 It binds the loopback address only, and `siphon cobalt remove` deletes it and
 everything it pulled in. The buttons in Settings do the same thing.
 
+`siphon cobalt start` also brings up a YouTube token provider
+([bgutil](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)) and a small
+bridge, because cobalt cannot mint YouTube's `poToken` itself. `siphon cobalt
+tokens` shows their state.
+
 Two honest notes. cobalt's own native dependency does not build against the
 very newest Node, so siphon looks for an LTS one beside it (`brew install
-node@22`) and uses that for cobalt alone. And cobalt's **YouTube** path needs
-a separate token provider running alongside it — without that it returns an
-empty file. That is precisely why siphon fetches with yt-dlp by default; use
-cobalt for the sites where yt-dlp is the one having a bad week.
+node@22`) and uses that for cobalt alone.
+
+And **YouTube through cobalt does not work**, tokens or no tokens. cobalt
+loads them successfully and the tunnel still comes back empty; it is an open
+bug for self-hosters ([#1465](https://github.com/imputnet/cobalt/issues/1465),
+[#1475](https://github.com/imputnet/cobalt/issues/1475)) that the documented
+workaround does not fix either. siphon fetches YouTube with yt-dlp, which is
+unaffected — use cobalt for the sites where yt-dlp is the one having a bad
+week.
 
 They fail differently — two implementations of the same awkward job, written
 by different people against the same moving targets — so a site that has

@@ -261,6 +261,23 @@ def start(port=DEFAULT_PORT, wait=40, on_line=None):
     if not installed():
         return False, "cobalt is not installed yet. Run `siphon cobalt install`."
 
+    # If the token provider is up, tell cobalt where it is. Without this a
+    # YouTube link tunnels zero bytes — cobalt does not mint poTokens itself.
+    session_server = {}
+    try:
+        import pot_provider
+        if pot_provider.bridge_running():
+            session_server["YOUTUBE_SESSION_SERVER"] = pot_provider.bridge_url()
+            # The token is a *web* BotGuard token, so the innertube client
+            # asking with it has to be a web one. cobalt's own documentation
+            # says WEB_EMBEDDED; with a mismatched client YouTube accepts the
+            # request, returns no error, and streams nothing — which looks
+            # exactly like the token not working.
+            session_server["YOUTUBE_SESSION_INNERTUBE_CLIENT"] = os.environ.get(
+                "SIPHON_INNERTUBE_CLIENT", "WEB_EMBEDDED")
+    except Exception:
+        pass
+
     directory = node_bin()
     node = os.path.join(directory, "node") if directory else "node"
     environment = _environment({
@@ -270,6 +287,7 @@ def start(port=DEFAULT_PORT, wait=40, on_line=None):
         # machine, so it gets the loopback address and nothing else.
         "API_LISTEN_ADDRESS": HOST,
         "API_NAME": "siphon-local",
+        **session_server,
     })
 
     log = paths.state_dir() / "cobalt.log"
@@ -335,11 +353,41 @@ def status(port=DEFAULT_PORT):
         "path": str(home()),
         "missing": requirements(),
         "node": node_version(),
+        "tokens": _token_status(),
     }
 
 
-def ensure(port=DEFAULT_PORT, on_line=None):
-    """Install if needed, start if needed, and hand back the address."""
+def _token_status():
+    try:
+        import pot_provider
+        return pot_provider.status()
+    except Exception:                       # noqa: BLE001
+        return {"installed": False, "running": False}
+
+
+def ensure(port=DEFAULT_PORT, on_line=None, tokens=True):
+    """Install if needed, start if needed, and hand back the address.
+
+    The token provider comes up first when `tokens` is set, because cobalt
+    reads YOUTUBE_SESSION_SERVER at startup — starting it afterwards leaves a
+    cobalt that cannot do YouTube until it is restarted.
+    """
+    if tokens:
+        try:
+            import pot_provider
+            if not pot_provider.bridge_running():
+                if not pot_provider.installed():
+                    ok, detail = pot_provider.install(on_line=on_line)
+                    if not ok and on_line:
+                        on_line(f"token provider: {detail}")
+                if pot_provider.installed():
+                    ok, detail = pot_provider.ensure(on_line=on_line)
+                    if not ok and on_line:
+                        on_line(f"token provider: {detail}")
+        except Exception as error:          # noqa: BLE001
+            if on_line:
+                on_line(f"token provider: {error}")
+
     alive, _ = running(port)
     if alive:
         return True, url(port)
