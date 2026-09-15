@@ -38,8 +38,12 @@ PROGRESS_INTERVAL = 0.25          # seconds between progress notifications
 class Queue:
     """Jobs, workers, and the state on disk that outlives both."""
 
-    def __init__(self, workers=2, on_change=None, state_path=None):
+    def __init__(self, workers=2, on_change=None, state_path=None,
+                 confirm_uncertain=True):
         self.workers = max(1, int(workers))
+        # When a track match is merely plausible, stop and ask rather than
+        # download and apologise. Turn it off for unattended runs.
+        self.confirm_uncertain = confirm_uncertain
         self.on_change = on_change
         self.state_path = Path(state_path) if state_path else \
             paths.state_dir() / "queue.json"
@@ -144,6 +148,11 @@ class Queue:
     def _process(self, job):
         workdir = paths.work_dir() / job.id
         produced_is_original = False
+        # A `return` from inside the try still runs the finally below, so the
+        # waiting path needs to say out loud that it has not finished —
+        # otherwise a job stopped on a question gets stamped with a finish
+        # time and starts looking like one that completed.
+        paused = False
         try:
             target = formats.resolve(job.target)
             item = job.item
@@ -155,15 +164,17 @@ class Queue:
                 job.message = "Looking for a source"
                 self._notify(force=True)
                 _enrich(item)
-                best = resolve.resolve(item)
-                if best.score >= resolve.CONFIDENT:
+                proposal = resolve.propose(item)
+                if proposal.hopeless:
+                    raise resolve.Unresolved(resolve.refusal(proposal))
+                if proposal.confident or not self.confirm_uncertain:
+                    best = resolve.accept(item, proposal.best, proposal)
                     job.note(f"matched to {best.display()} ({best.score:.0%})")
                 else:
-                    # Above the floor but not convincing. It proceeds, and it
-                    # says so — the alternatives are on the item for an
-                    # interface to offer.
-                    job.note(f"uncertain match ({best.score:.0%}): {best.display()}"
-                             f" — {', '.join(best.reasons)}")
+                    # Plausible, not convincing. The promise is that this is
+                    # shown *before* it downloads, so the job stops here and
+                    # the worker goes to do something else.
+                    raise _NeedsChoice(proposal)
                 self._check_cancelled(job)
 
             # ---- fetch -------------------------------------------------
@@ -245,6 +256,24 @@ class Queue:
             job.message = f"Saved to {final}"
             job.note(job.message)
 
+        except _NeedsChoice as question:
+            paused = True
+            with self._lock:
+                job.state = model.WAITING
+                job.stage = model.RESOLVE
+                job.progress = 0.0
+                job.choice = question.proposal.to_dict()
+                best = question.proposal.best
+                job.message = (
+                    f"Not sure this is right: “{best.display()}” "
+                    f"({best.score:.0%}) — {', '.join(best.reasons)}"
+                )
+                job.note(job.message)
+            shutil.rmtree(workdir, ignore_errors=True)
+            self._save()
+            self._notify(force=True)
+            return                       # not finished; finished_at stays None
+
         except Exception as error:               # noqa: BLE001 — reported, not swallowed
             if job.id in self._cancelled or _is_cancellation(error):
                 job.state = model.CANCELLED
@@ -255,11 +284,12 @@ class Queue:
                 job.message = job.error
                 job.note(f"failed: {job.error}")
         finally:
-            job.finished_at = time.time()
-            self._cancelled.discard(job.id)
-            shutil.rmtree(workdir, ignore_errors=True)
-            self._save()
-            self._notify(force=True)
+            if not paused:
+                job.finished_at = time.time()
+                self._cancelled.discard(job.id)
+                shutil.rmtree(workdir, ignore_errors=True)
+                self._save()
+                self._notify(force=True)
 
     def _check_cancelled(self, job):
         if job.id in self._cancelled:
@@ -287,6 +317,58 @@ class Queue:
                 job.state = model.CANCELLED
                 job.message = "Stopped before it started."
                 job.finished_at = time.time()
+        self._save()
+        self._notify(force=True)
+        return True
+
+    def waiting(self):
+        """Jobs stopped on a question nobody has answered yet."""
+        with self._lock:
+            return [j for j in self._jobs.values() if j.state == model.WAITING]
+
+    def choose(self, job_id, url):
+        """Answer a waiting job: this is the one. Puts it back in the queue."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or job.state != model.WAITING:
+                return False
+            options = (job.choice or {}).get("options") or []
+            picked = next((o for o in options if o.get("url") == url), None)
+            if picked is None:
+                return False
+            job.item.url = picked["url"]
+            job.item.resolved_from = job.item.origin
+            job.item.match_confidence = picked.get("score")
+            job.item.extra["match"] = {
+                "title": picked.get("title"),
+                "uploader": picked.get("uploader"),
+                "duration": picked.get("duration"),
+                "score": picked.get("score"),
+                "reasons": picked.get("reasons") or [],
+                "query": (job.choice or {}).get("query"),
+                "chosen_by": "you",
+            }
+            job.choice = None
+            job.state = model.QUEUED
+            job.stage = None
+            job.message = f"Using “{picked.get('title')}”."
+            job.note(job.message)
+            self._pending.append(job.id)
+            self._wake.notify_all()
+        self._save()
+        self._notify(force=True)
+        return True
+
+    def skip(self, job_id):
+        """Answer a waiting job: none of these. Nothing is downloaded."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or job.state != model.WAITING:
+                return False
+            job.state = model.CANCELLED
+            job.choice = None
+            job.message = "Skipped — none of the matches looked right."
+            job.finished_at = time.time()
         self._save()
         self._notify(force=True)
         return True
@@ -422,6 +504,14 @@ def _artwork(item, workdir, target):
     except OSError:
         return None
     return str(path)
+
+
+class _NeedsChoice(Exception):
+    """A match good enough to offer and not good enough to assume."""
+
+    def __init__(self, proposal):
+        self.proposal = proposal
+        super().__init__("waiting for somebody to pick")
 
 
 class _Cancelled(Exception):

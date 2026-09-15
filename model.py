@@ -84,11 +84,17 @@ class Item:
 # RUNNING it has got to, which is what the progress bar is labelled with.
 QUEUED = "queued"
 RUNNING = "running"
+WAITING = "waiting"          # stopped, on purpose, until a person answers
 DONE = "done"
 FAILED = "failed"
 CANCELLED = "cancelled"
 
 TERMINAL = {DONE, FAILED, CANCELLED}
+
+# WAITING is deliberately not terminal and deliberately not queued. The job
+# has not failed and is not going to make any more progress on its own: it is
+# a question waiting for an answer, and it survives a restart because the
+# question is still worth asking tomorrow.
 
 # Stages, in order. Not every job has every one: a local file that needs no
 # conversion goes straight from RESOLVE to PLACE.
@@ -117,6 +123,7 @@ class Job:
     error: str = None
     log: list = field(default_factory=list)   # last few lines, for diagnosis
 
+    choice: dict = None            # the options, when state is WAITING
     bytes_done: int = None
     bytes_total: int = None
     speed: float = None            # bytes/sec

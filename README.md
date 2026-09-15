@@ -135,9 +135,32 @@ Every match carries a confidence and its reasons:
  49%  (Daft Punk - Around the World / Harder...)     length 19s out, looks like a live version
 ```
 
-Below 50% nothing is downloaded and the closest miss is named instead. Between
-50% and 75% the track is fetched and the job says the match was uncertain and
-why. Above 75% it is acted on without comment.
+Above 75% it is acted on without comment. Below 50% nothing is downloaded and
+the closest miss is named instead. In between, siphon stops and asks, before
+fetching anything:
+
+```
+Not sure about: Erik Satie — Gnossienne No.1  (4m 40s)
+  1.  71%   4m 10s  Erik Satie - Topic     Gnossienne No. 1 (Remastered)
+          title matches, official auto-generated upload, length 30s out
+  2.  69%   4m 11s  The Flaming Piano      Erik Satie - Gnossienne No. 1
+          title matches, artist named in the title, length 29s out
+  3.  68%   3m 25s  DistantMirrors         Erik Satie - Gnossienne No.1
+          title matches, artist named in the title, length 75s out
+  4.  64%  30m 35s  αλώβητος κανένας       Erik Satie - Gnossienne No.1 (Extended)
+          title matches, artist named in the title, length 1555s out
+  s. skip this one
+Which one? [1]
+```
+
+The window shows the same choice as a card with a button on each option. A
+waiting job holds its place in the queue and survives siphon being closed,
+because the question is still worth asking tomorrow.
+
+For unattended runs, `--pick best` takes the top match without asking and
+`--pick skip` passes over anything uncertain. Piped into a script with no
+terminal to ask, siphon takes the best rather than hanging on a prompt nobody
+can see.
 
 ## What it runs on
 

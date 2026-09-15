@@ -134,8 +134,16 @@ def command_get(args):
         print(error, file=sys.stderr)
         return 2
 
+    # "ask" only means anything if there is somebody there to ask. Piped into
+    # a script, the choice has to be made in advance, and taking the best
+    # match silently is the behaviour that surprises nobody.
+    picking = getattr(args, "pick", "ask")
+    if picking == "ask" and not sys.stdin.isatty():
+        picking = "best"
+
     progress = Progress(quiet=args.quiet)
-    queue = jobs_module.Queue(workers=args.workers, on_change=progress.update)
+    queue = jobs_module.Queue(workers=args.workers, on_change=progress.update,
+                              confirm_uncertain=picking != "best")
 
     try:
         items = sources.expand(args.url, recursive=args.recursive)
@@ -173,10 +181,67 @@ def command_get(args):
             queue.cancel(job.id)
         queue.stop(wait=True, timeout=10)
         return 130
-    queue.stop()
     progress.clear()
 
+    # Anything that stopped to ask is asked about now, and whatever is chosen
+    # goes back through the queue.
+    while queue.waiting():
+        for job in queue.waiting():
+            _settle(queue, job, picking)
+        progress = Progress(quiet=args.quiet)
+        queue.on_change = progress.update
+        try:
+            queue.drain()
+        except KeyboardInterrupt:
+            break
+        progress.clear()
+
+    queue.stop()
     return _report(queue, verbose=args.verbose)
+
+
+def _settle(queue, job, picking):
+    """Put one uncertain match to the user, or apply the policy they chose."""
+    options = (job.choice or {}).get("options") or []
+    if not options:
+        queue.skip(job.id)
+        return
+    if picking == "skip":
+        queue.skip(job.id)
+        return
+    if picking == "best":
+        queue.choose(job.id, options[0]["url"])
+        return
+
+    print(f"\nNot sure about: {job.item.display()}", end="")
+    if job.item.duration:
+        print(f"  ({_clock(job.item.duration)})")
+    else:
+        print()
+    for number, option in enumerate(options[:5], start=1):
+        length = _clock(option.get("duration")) if option.get("duration") else "  —  "
+        print(f"  {number}. {option['score']:>4.0%}  {length:>7}  "
+              f"{(option.get('uploader') or '?')[:22]:22} {option['title'][:44]}")
+        if option.get("reasons"):
+            print(f"          {', '.join(option['reasons'])}")
+    print("  s. skip this one")
+
+    while True:
+        try:
+            answer = input("Which one? [1] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            queue.skip(job.id)
+            return
+        if answer in {"s", "skip", "n", "no"}:
+            queue.skip(job.id)
+            return
+        if not answer:
+            answer = "1"
+        if answer.isdigit() and 1 <= int(answer) <= len(options[:5]):
+            queue.choose(job.id, options[int(answer) - 1]["url"])
+            return
+        print("  A number from the list, or s to skip.")
 
 
 def _report(queue, verbose=False):
@@ -191,14 +256,20 @@ def _report(queue, verbose=False):
             size = f"  ({_size(os.path.getsize(where))})"
         except OSError:
             pass
-        print(f"✓ {os.path.basename(where)}{size}")
+        uncertain = ""
+        confidence = job.item.match_confidence
+        if confidence is not None and confidence < 0.75:
+            uncertain = f"  ← matched at {confidence:.0%}, worth a listen"
+        print(f"✓ {os.path.basename(where)}{size}{uncertain}")
         if verbose:
             for line in job.log:
                 print(f"    {line}")
     for job in failed:
         print(f"✗ {job.item.display()}\n    {job.error}", file=sys.stderr)
     for job in cancelled:
-        print(f"– {job.item.display()} (stopped)")
+        print(f"– {job.item.display()} ({job.message or 'stopped'})")
+    for job in queue.waiting():
+        print(f"? {job.item.display()}\n    {job.message}")
 
     if done:
         folder = os.path.dirname(done[0].output_path or "")
@@ -365,6 +436,9 @@ def build_parser():
                        help="show what was decided for each file")
         p.add_argument("-r", "--recursive", action="store_true",
                        help="for a folder, include what is inside its folders")
+        p.add_argument("--pick", choices=("ask", "best", "skip"), default="ask",
+                       help="what to do when a track match is uncertain: ask "
+                            "(default), take the best, or skip it")
 
     get = sub.add_parser("get", help="fetch a URL")
     get.add_argument("url", help="a link, or a path to a file or folder")

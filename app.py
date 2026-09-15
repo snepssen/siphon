@@ -228,6 +228,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": _queue.cancel(body.get("id"))})
             if route == "/api/retry":
                 return self._json({"ok": _queue.retry(body.get("id"))})
+            if route == "/api/choose":
+                return self._json({"ok": _queue.choose(body.get("id"),
+                                                       body.get("url"))})
+            if route == "/api/skip":
+                return self._json({"ok": _queue.skip(body.get("id"))})
             if route == "/api/forget":
                 _queue.forget_finished()
                 return self._json({"ok": True})

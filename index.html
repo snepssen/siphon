@@ -79,6 +79,21 @@
   .dot.running { background: var(--accent); }
   .dot.done { background: var(--pass); }
   .dot.failed { background: var(--fail); }
+  .dot.waiting { background: var(--warn); }
+
+  .ask { border: 1px solid var(--warn); border-radius: 8px; padding: 12px;
+         margin-top: 10px;
+         background: color-mix(in srgb, var(--warn) 7%, transparent); }
+  .ask h4 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+  .opt { display: flex; gap: 10px; align-items: baseline; padding: 6px 0;
+         border-top: 1px solid var(--line); }
+  .opt:first-of-type { border-top: 0; }
+  .opt .pc { font-size: 12px; color: var(--quiet); width: 34px; flex: 0 0 auto;
+             text-align: right; font-variant-numeric: tabular-nums; }
+  .opt .who { flex: 1; min-width: 0; }
+  .opt .who b { display: block; font-weight: 500; font-size: 13px;
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .opt .who span { font-size: 12px; color: var(--quiet); }
 
   ol.items { margin: 0; padding: 0 0 0 26px; max-height: 260px; overflow-y: auto;
              font-size: 13px; color: var(--quiet); }
@@ -252,6 +267,7 @@ function renderJob(job) {
   node.className = "job";
 
   const running = job.state === "running";
+  const asking = job.state === "waiting";
   const failed = job.state === "failed";
   const done = job.state === "done";
 
@@ -266,7 +282,8 @@ function renderJob(job) {
   stateLabel.className = "state";
   stateLabel.textContent = running
     ? (STAGE[job.stage] || "starting")
-    : job.state === "queued" ? "waiting" : job.state;
+    : job.state === "queued" ? "queued"
+    : asking ? "needs you" : job.state;
 
   const acts = document.createElement("div");
   acts.className = "acts";
@@ -276,6 +293,7 @@ function renderJob(job) {
     api("/api/cancel", { id: job.id })));
   if (failed || job.state === "cancelled") acts.append(button("Try again", () =>
     api("/api/retry", { id: job.id })));
+  if (asking) acts.append(button("Skip", () => api("/api/skip", { id: job.id })));
 
   title.append(dot, name, stateLabel, acts);
 
@@ -284,6 +302,8 @@ function renderJob(job) {
   message.textContent = job.message || "";
 
   node.append(title, message);
+
+  if (asking && job.choice) node.append(renderChoice(job));
 
   if (running) {
     const track = document.createElement("div");
@@ -305,6 +325,51 @@ function renderJob(job) {
     }
   }
   return node;
+}
+
+function renderChoice(job) {
+  // The whole point of the waiting state: the options are laid out and
+  // nothing is fetched until one of them is picked. Each row says what it is
+  // and why it scored what it did, because "82%" on its own is not a reason.
+  const box = document.createElement("div");
+  box.className = "ask";
+
+  const heading = document.createElement("h4");
+  heading.textContent = "Which one is it?";
+  box.append(heading);
+
+  for (const option of job.choice.options || []) {
+    const row = document.createElement("div");
+    row.className = "opt";
+
+    const percent = document.createElement("span");
+    percent.className = "pc";
+    percent.textContent = `${Math.round((option.score || 0) * 100)}%`;
+
+    const who = document.createElement("div");
+    who.className = "who";
+    const name = document.createElement("b");
+    name.textContent = option.title || "untitled";
+    const detail = document.createElement("span");
+    const bits = [option.uploader];
+    if (option.duration) bits.push(clock(option.duration));
+    if (option.reasons?.length) bits.push(option.reasons.join(", "));
+    detail.textContent = bits.filter(Boolean).join(" · ");
+    who.append(name, detail);
+
+    const use = button("Use this", () =>
+      api("/api/choose", { id: job.id, url: option.url }));
+    use.className = "";
+
+    row.append(percent, who, use);
+    box.append(row);
+  }
+
+  const none = document.createElement("p");
+  none.className = "note";
+  none.textContent = "None of these? Skip it — nothing has been downloaded.";
+  box.append(none);
+  return box;
 }
 
 function button(label, handler) {

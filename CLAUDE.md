@@ -46,14 +46,18 @@ comparing packet checksums, not decoded audio — see the trap below.
 reasons, and both are shown. A conversion that cannot be described in a
 sentence does not belong in the planner.
 
-The resolver keeps half of this and the half it keeps should be understood
-exactly. Below `resolve.FLOOR` nothing is downloaded and the near-miss is
-named. Between the floor and `CONFIDENT` the track *is* fetched, and the job
-notes that the match was uncertain along with the reasons and the runners-up —
-which is shown after it downloads, not before. The missing piece is a job
-state that waits for somebody to choose; `item.extra["match"]["alternatives"]`
-is already carried for exactly that, and until it exists this promise should
-not be described as fully kept.
+The resolver holds the same line in three bands. Below `resolve.FLOOR` nothing
+is downloaded and the near-miss is named. At or above `CONFIDENT` the match is
+acted on without comment. In between, the job stops in `model.WAITING` with
+the options attached and waits for a person — *before* fetching anything, not
+after.
+
+The load-bearing detail is that `propose` mutates nothing and `accept` is the
+only thing that ever sets `item.url`. A waiting job therefore has no url, and
+an item with no url cannot have fetched a byte — which is what makes "shown
+before it downloads" a fact about the code rather than a claim about it.
+`tests/test_confirmation.py` asserts exactly that, and it is the assertion to
+keep if any of the rest is refactored away.
 
 **The queue survives being closed.** Jobs are written to disk on every state
 change, and anything found still marked `running` at startup goes back to
@@ -110,6 +114,17 @@ object the browser also hands over has a name and no path, which is useless to
 a tool whose job is to read the file from disk. `pathFromDrop` decodes the
 URI; there is no fallback that could work, so the failure case says "paste the
 path instead" and names the Finder shortcut for copying one.
+
+**A `return` inside a `try` still runs the `finally`.** The waiting path
+returns early, and the `finally` in `jobs._process` was stamping `finished_at`
+on its way out — so a job stopped on a question looked like one that had
+completed. The `paused` flag exists for that and nothing else. A test asserts
+`finished_at is None` for a waiting job, which is how it was caught.
+
+**Only an offered option may be chosen.** `Queue.choose` looks the url up in
+the job's own `choice["options"]` and refuses anything else, so the window's
+`/api/choose` cannot be talked into fetching an arbitrary address by a request
+that did not come from the page. There is a test for it.
 
 **Deezer describes a playlist and an album differently.** A playlist's nested
 tracks carry `isrc` and `track_position`; an album's carry neither. So an
@@ -205,9 +220,11 @@ cannot yet handle should be a new module in `engines/` and one line in
 - **Phase 2, done.** The `127.0.0.1` window: live queue over server-sent
   events, playlist preview before committing, settings page generated from
   `credentials.status()`, drag-and-drop.
-- **Phase 3, in progress.** Deezer and Spotify done and verified end to end,
-  with `resolve.py` and artwork embedding. Tidal is written but **its
-  catalogue path has never run** — see below. The confirmation step for an
-  uncertain match is still missing; the promise above says so.
+- **Phase 3, done bar one thing.** Deezer and Spotify verified end to end,
+  `resolve.py`, artwork embedding, and the confirmation step for uncertain
+  matches in both the terminal and the window. Tidal is written but **its
+  catalogue path has never run** — see below.
+- **Phase 4.** Breadth: ImageMagick, pandoc and Ghostscript engines; a
+  self-hosted cobalt instance as a second fetch backend.
 - **Phase 4.** Breadth. ImageMagick, pandoc and Ghostscript engines; a
   self-hosted cobalt instance as a second fetch backend.

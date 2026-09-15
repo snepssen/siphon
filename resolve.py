@@ -236,52 +236,106 @@ def rank(item, candidates):
 
 
 # ---------------------------------------------------------------------------
-# The thing everything else calls
+# Proposing, accepting, and the difference between them
 # ---------------------------------------------------------------------------
 
-def resolve(item, limit=CANDIDATES):
-    """Give a catalogue item a url, or refuse and say what the closest was.
+@dataclass
+class Proposal:
+    """What the search turned up, before anything has been decided.
 
-    Returns the winning Candidate. The item is updated in place with its url
-    and the confidence, so whatever happens next can show how sure this was.
+    This exists so that "which track is this" can be a question rather than an
+    assumption. `propose` changes nothing; `accept` is what commits an item to
+    a url. Keeping those apart is what lets an uncertain match wait for a
+    person instead of quietly downloading and apologising afterwards.
+    """
+
+    query: str
+    ranked: list = field(default_factory=list)
+
+    @property
+    def best(self):
+        return self.ranked[0] if self.ranked else None
+
+    @property
+    def confident(self):
+        return bool(self.best) and self.best.score >= CONFIDENT
+
+    @property
+    def hopeless(self):
+        return not self.best or self.best.score < FLOOR
+
+    def to_dict(self):
+        """The shape an interface needs to lay the choice out."""
+        return {
+            "query": self.query,
+            "options": [
+                {"url": c.url, "title": c.title, "uploader": c.uploader,
+                 "duration": c.duration, "score": c.score, "reasons": c.reasons}
+                for c in self.ranked[:5]
+            ],
+        }
+
+    def option(self, url):
+        for candidate in self.ranked:
+            if candidate.url == url:
+                return candidate
+        return None
+
+
+def propose(item, limit=CANDIDATES):
+    """Search and rank. Mutates nothing, decides nothing."""
+    query = query_for(item)
+    if not query:
+        raise Unresolved("That track has no title to search for.")
+    return Proposal(query=query, ranked=rank(item, search(query, limit=limit)))
+
+
+def accept(item, candidate, proposal=None):
+    """Commit an item to a candidate. This is the only thing that sets a url."""
+    item.url = candidate.url
+    item.resolved_from = item.origin
+    item.match_confidence = candidate.score
+    item.extra["match"] = {
+        "title": candidate.title,
+        "uploader": candidate.uploader,
+        "duration": candidate.duration,
+        "score": candidate.score,
+        "reasons": candidate.reasons,
+        "query": proposal.query if proposal else query_for(item),
+        "alternatives": [
+            {"title": c.title, "uploader": c.uploader, "url": c.url,
+             "duration": c.duration, "score": c.score}
+            for c in (proposal.ranked[1:4] if proposal else [])
+        ],
+    }
+    return candidate
+
+
+def refusal(proposal):
+    """The sentence for a proposal that never got near being right."""
+    best = proposal.best
+    if not best:
+        return f"Nothing at all came back for “{proposal.query}”."
+    return (
+        f"No convincing match for “{proposal.query}”. The closest was "
+        f"“{best.display()}” at {best.score:.0%} — {', '.join(best.reasons)}."
+    )
+
+
+def resolve(item, limit=CANDIDATES):
+    """Propose and accept in one go, taking the best above the floor.
+
+    The unattended path: used when nobody is going to be asked. A queue that
+    wants to put an uncertain match to a person calls `propose` instead and
+    decides for itself.
     """
     if item.url:
         return None                    # already fetchable; nothing to do
 
-    query = query_for(item)
-    if not query:
-        raise Unresolved("That track has no title to search for.")
-
-    ranked = rank(item, search(query, limit=limit))
-    if not ranked:
-        raise Unresolved(f"Nothing at all came back for “{query}”.")
-
-    best = ranked[0]
-    if best.score < FLOOR:
-        raise Unresolved(
-            f"No convincing match for “{query}”. The closest was "
-            f"“{best.display()}” at {best.score:.0%} — {', '.join(best.reasons)}."
-        )
-
-    item.url = best.url
-    item.resolved_from = item.origin
-    item.match_confidence = best.score
-    item.extra["match"] = {
-        "title": best.title,
-        "uploader": best.uploader,
-        "duration": best.duration,
-        "score": best.score,
-        "reasons": best.reasons,
-        "query": query,
-        # The runners-up are kept so an interface can offer them without
-        # searching again.
-        "alternatives": [
-            {"title": c.title, "uploader": c.uploader, "url": c.url,
-             "duration": c.duration, "score": c.score}
-            for c in ranked[1:4]
-        ],
-    }
-    return best
+    proposal = propose(item, limit=limit)
+    if proposal.hopeless:
+        raise Unresolved(refusal(proposal))
+    return accept(item, proposal.best, proposal)
 
 
 def _overlap(wanted, haystack):
