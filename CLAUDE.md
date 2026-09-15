@@ -409,8 +409,8 @@ cannot yet handle should be a new module in `engines/` and one line in
   `credentials.status()`, drag-and-drop.
 - **Phase 3, done.** Deezer, Spotify and Tidal, `resolve.py`, artwork
   embedding, and the confirmation step for uncertain matches in both the
-  terminal and the window. The one gap is Tidal's playlist path, which needs a
-  real playlist link to verify.
+  terminal and the window. All three catalogue sources verified end to end,
+  Tidal's playlist path included.
 - **Tokens.** `pot_provider.py` runs bgutil and a bridge in front of it, so
   cobalt gets real poTokens. It does not make cobalt's YouTube work — see
   below — but it is correct, tested, and the piece anything else would need.
@@ -418,5 +418,17 @@ cannot yet handle should be a new module in `engines/` and one line in
   images and documents in the catalogue, cobalt as a second fetch backend, and
   `bootstrap.py` — which is the convention the whole family follows and the
   thing to copy into the next tool.
-- **Phase 4.** Breadth. ImageMagick, pandoc and Ghostscript engines; a
-  self-hosted cobalt instance as a second fetch backend.
+
+## What is not done
+
+- **No `build.sh` or `release.sh`.** The zipapp builds by hand
+  (`python3 -m zipapp . -o siphon.pyz -p "/usr/bin/env python3"`) and works,
+  but there is nothing scripted and no `.app` the way `media-preflight` has.
+- **No `docs/` page**, so nothing to publish and no homepage on the repo.
+- **`app.py` is untested**, and its `_authorised` is what stops any open
+  browser tab driving a downloader that writes files. That is the coverage gap
+  worth closing first. `net`, `siphon`, and the Deezer/Spotify/local sources
+  are also only exercised live.
+- **siphon is missing from the top-level `ORGANISING.md`**, which is the one
+  document that exists so a folder does not have to be opened to know what it
+  is.
