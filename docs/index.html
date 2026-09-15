@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>siphon</title>
+<meta name="description" content="Fetch media from a URL, or convert what you already have. Local-first, no accounts, and it never re-encodes what it does not have to.">
+<meta property="og:title" content="siphon">
+<meta property="og:description" content="Get media in, get it out in the shape you want — from a link or from your own disk, through one pipeline, on your own machine.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="ecosystem.css">
+</head>
+<body data-project="siphon">
+
+<div class="ecosystem-progress" aria-hidden="true"><span></span></div>
+<nav class="ecosystem-rail" aria-label="Snepssen project network">
+  <div class="ecosystem-rail__inner">
+    <a class="ecosystem-rail__brand" href="https://snepssen.github.io/tools-core/"><span>snepssen / workshop</span></a>
+    <div class="ecosystem-rail__links">
+      <a data-project="gateway-forge" href="https://snepssen.github.io/gateway-forge/">Gateway Forge</a>
+      <a data-project="voice-forge" href="https://snepssen.github.io/voice-forge/">Voice Forge</a>
+      <a data-project="protoke" href="https://snepssen.github.io/protoke/">Protoke</a>
+      <a data-project="media-preflight" href="https://snepssen.github.io/media-preflight/">Media Preflight</a>
+      <a data-project="siphon" href="https://snepssen.github.io/siphon/">siphon</a>
+      <a data-project="tools-core" href="https://snepssen.github.io/tools-core/">tools-core</a>
+    </div>
+  </div>
+</nav>
+
+<div class="wrap">
+<header id="top">
+  <span class="badge"><span class="dot"></span>macOS · Windows · Linux · MIT</span>
+  <h1>siphon</h1>
+  <p class="subhead">Paste a link and get the file. Point it at a folder you already have and get the same thing in a different shape. It is one pipeline either way — a download is just a conversion that had to fetch its input first — and it does not re-encode anything it does not have to.</p>
+  <div class="headmeta">
+    <span><b>1800</b> sites it can fetch from</span>
+    <span><b>5</b> conversion engines, none bundled</span>
+    <span><b>0</b> accounts, uploads or telemetry</span>
+  </div>
+  <p class="jump">
+    <a href="#remux">Why it is fast</a> ·
+    <a href="#music">Music</a> ·
+    <a href="#formats">Formats</a> ·
+    <a href="#get">Get it</a> ·
+    <a href="#limits">What it will not do</a>
+  </p>
+</header>
+
+<section>
+  <p class="eyebrow">The problem</p>
+  <h2>The hosted ones stopped working</h2>
+  <p class="lede">The public <a href="https://github.com/imputnet/cobalt">cobalt</a> instance can no longer fetch from YouTube. Not because of anything wrong with cobalt — because YouTube blocks the addresses a popular shared service runs from. A copy running on your own connection, making a handful of requests, does not have that problem.</p>
+  <p>siphon is that, and the other half nobody ships with it. A downloader that hands you a <span class="mono">.webm</span> when you wanted an mp3, and leaves you to find something else to convert it, has done half a job. Here a file already on your disk enters the same pipeline a URL does, simply skipping the stage that fetches bytes.</p>
+
+<div class="figure">
+<pre class="report mono">siphon get https://…                  <span class="muted">best quality, nothing re-encoded</span>
+siphon get https://… --as mp3         <span class="muted">fetch and make an mp3</span>
+siphon get https://…/playlist --as m4a   <span class="muted">a playlist, tagged and foldered</span>
+siphon convert album/ --as flac       <span class="muted">a folder already on this disk</span>
+siphon convert photos/ --as web-image <span class="muted">so is a folder of photographs</span>
+siphon list https://…/playlist        <span class="muted">show what is in it, fetch nothing</span></pre>
+<p class="caption">Or run <span class="mono">siphon</span> on its own and it opens a window on 127.0.0.1 — the same queue, seen from the other side.</p>
+</div>
+</section>
+
+<section id="remux">
+  <p class="eyebrow">The part that matters</p>
+  <h2>It does not re-encode what it does not have to</h2>
+  <p>Asking for an mp4 is usually not a conversion. The video is already H.264 and the audio already AAC; both are legal inside an mp4; the only work needed is moving the streams into a different wrapper. That takes about a second and changes not one sample. Re-encoding anyway would cost minutes and quality in exchange for nothing at all.</p>
+  <p>So siphon compares what is in the file against what you asked for, stream by stream, re-encodes exactly the streams that need it — and tells you which ones those were.</p>
+
+<div class="figure">
+<pre class="report mono">$ siphon get 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' --as mp4-720 -v
+<span class="pass">✓</span> Big Buck Bunny 60fps 4K.mp4  (153.7 MB)
+    fetched aqz-KE-bpKQ.mp4
+    Repackaged from mp4 to mp4 with the streams copied — nothing re-encoded.
+    audio copied: already aac
+    video copied: already h264</pre>
+<p class="caption">Sixteen seconds for 153 MB, and the packets in the output are byte-for-byte the packets that came down the wire. There is a test that proves it — by comparing per-stream packet checksums, because decoded audio is <em>not</em> proof: containers disagree about padding and interleaving, so a perfect copy can decode a few hundred samples adrift.</p>
+</div>
+
+  <p>The same reasoning runs backwards into the fetch. Ask for an mp4 and siphon asks yt-dlp for the H.264 and AAC renditions specifically, so the conversion afterwards finds it has nothing to do. Ask for an <span class="mono">.opus</span> from YouTube and the result is a pure copy of what YouTube already serves — 0.09 seconds, against 7.65 to re-encode the same audio to mp3.</p>
+  <p>You can see the decision before committing to it: <span class="mono">siphon plan recording.wav --as flac</span>.</p>
+</section>
+
+<section id="music">
+  <p class="eyebrow">Music</p>
+  <h2>A playlist is a list of names, not a list of files</h2>
+  <p>Paste a Deezer, Spotify or Tidal album, playlist or track. siphon reads the track list — titles, artists, running times, cover art, ISRCs — then finds each track something that will actually serve it, fetches that, tags it, embeds the cover and files it under the album.</p>
+  <p>Deezer needs no key at all. Spotify works without one too, by reading the same embed its web player uses — but that path cannot see ISRCs and stops at fifty tracks of a long playlist, so siphon says when a list looks truncated rather than quietly handing you a fraction of it.</p>
+
+  <h3>How a track is matched, and when it refuses</h3>
+  <p>This is where a music downloader usually goes quietly wrong. The obvious approach is to search the title and take whatever is closest in length. That is wrong often enough to matter:</p>
+
+<div class="figure">
+<pre class="report mono"><span class="muted">wanted: Daft Punk — Harder, Better, Faster, Stronger (226s)</span>
+
+<span class="pass">100%</span>  225s  Daft Punk            Daft Punk - Harder, Better, Faster, Stronger
+      <span class="muted">title matches, channel is the artist, length exact</span>
+ <span class="warn">73%</span>  225s  Fr. Eckle Studios    Daft Hands - Harder, Better, Faster, Stronger
+      <span class="muted">title matches, length exact</span>
+ <span class="bad">49%</span>  207s  Daft Punk            Daft Punk - Around the World / Harder Better…
+      <span class="muted">length 19s out, looks like a live version</span></pre>
+<p class="caption">“Daft Hands” is a different recording that happens to be <em>closer</em> in length than the real track. A resolver that decides on running time picks it. So running time is worth a quarter of the score and never more; the rest is the title, and whether the artist is the one who uploaded it.</p>
+</div>
+
+  <p>Above 75% siphon acts without comment. Below 50% it downloads nothing and names the closest miss. In between it stops and asks — <em>before</em> fetching, with the candidates and the reasons laid out, in the terminal or as a card in the window. A weak match is shown before it downloads, not apologised for after.</p>
+</section>
+
+<section id="formats">
+  <p class="eyebrow">Formats</p>
+  <h2>Four kinds of thing, one pipeline</h2>
+  <div class="cards">
+    <div class="card"><h3>Audio</h3><p class="mono">mp3 · m4a · opus · flac · wav</p><p>Plus <span class="mono">audio</span>, meaning whatever it already was, untouched.</p></div>
+    <div class="card"><h3>Video</h3><p class="mono">mp4 · mp4-1080 · mp4-720 · mkv · webm</p><p>Plus <span class="mono">video</span> — best available, nothing re-encoded.</p></div>
+    <div class="card"><h3>Images</h3><p class="mono">jpg · png · webp · tiff · gif</p><p><span class="mono">web-image</span> caps the longest side at 2000px. Transparency is flattened onto white, not the black you would otherwise get.</p></div>
+    <div class="card"><h3>Documents</h3><p class="mono">pdf · docx · xlsx · pptx · epub · odt · rtf · html · md · txt · csv</p><p>Office files to PDF keep their layout; documents to markup keep their meaning. Different engines, on purpose.</p></div>
+  </div>
+  <p class="note">A PDF rendered to images gives you one file per page, not a picture of page one.</p>
+</section>
+
+<section id="get">
+  <p class="eyebrow">Getting it</p>
+  <h2>It offers to install what it needs</h2>
+  <p>siphon ships no binaries. That is deliberate: yt-dlp releases most weeks because the sites it reads keep changing, and a copy frozen inside a download would be broken by the time you opened it. This way <span class="mono">brew upgrade yt-dlp</span> fixes siphon without siphon being touched.</p>
+  <p>So the first run asks, and the default answer is yes to all of it.</p>
+
+<div class="figure">
+<pre class="report mono">siphon needs a few programs it does not ship.
+
+  ffmpeg     needed  <span class="muted">— converting audio and video, and muxing what yt-dlp fetches</span>
+  magick     extra   <span class="muted">— still image formats ffmpeg handles badly or not at all</span>
+
+  brew install ffmpeg
+  brew install imagemagick
+
+Install all 2 of these with Homebrew? [Y/n]</pre>
+<p class="caption">On a system whose package manager needs root, siphon prints the command instead of running it. It will not invoke <span class="mono">sudo</span> on your behalf.</p>
+</div>
+
+  <p><a href="https://github.com/snepssen/siphon">The source is on GitHub</a>, MIT, Python 3.10 or newer. Clone it and run <span class="mono">./start.sh</span>, or build a <span class="mono">.app</span> and a single-file <span class="mono">.pyz</span> with <span class="mono">./build.sh</span>.</p>
+</section>
+
+<section id="limits">
+  <p class="eyebrow">Honesty</p>
+  <h2>What it will not do</h2>
+  <p>siphon fetches things that are served openly. It reads playlists from streaming services as metadata — what the tracks are — and then fetches those tracks from somewhere that serves them. <b>It does not decrypt protected streams, and it will not be made to.</b> If a service hands out its audio under DRM, siphon's answer is that it cannot help, and it says so in those words rather than failing strangely.</p>
+  <p>It is not an editor and not a library manager. It does not upload anything anywhere, and nothing leaves your machine except the request that fetches the media. There are no accounts, no telemetry and no cloud anything.</p>
+  <p>Two limits worth knowing before you meet them. <b>There is no way back out of a PDF</b> — a PDF describes marks on a page, and the structure the document had before it became one is not in the file; siphon makes PDFs smaller and renders their pages, and does not pretend to un-print them. And <b>converting a document is not transcoding</b>: tracked changes and exact layout do not survive a change of format, so every plan says what it will lose before it runs.</p>
+</section>
+
+<footer class="contact">
+  <p><a href="https://github.com/snepssen/siphon">github.com/snepssen/siphon</a> · MIT · part of the <a href="https://snepssen.github.io/tools-core/">snepssen workshop</a></p>
+  <p class="note">You are responsible for what you download and what you do with it.</p>
+</footer>
+</div>
+
+<script src="ecosystem.js"></script>
+</body>
+</html>
