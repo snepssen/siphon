@@ -136,6 +136,42 @@ m4a and flac only. Adding opus to that set would silently drop the artwork
 rather than embed it. Relatedly, mp4 has no standard ISRC atom, so an m4a
 loses the ISRC that a flac or an mp3 keeps.
 
+**Tidal's request path is unverified, and that must stay written down until
+it is not.** Tidal is the only service here with no keyless way in: the v2 API
+answers `UNAUTHORIZED` to everything, there is no public embed JSON, and the
+share pages carry a title and nothing else. So nothing in `_album`,
+`_playlist` or `_bearer` has ever been run against the real service.
+
+What *is* confirmed, from a captured `GET /v2/albums/{id}` response: the base
+URL, the `Accept: application/vnd.api+json` header, the `countryCode`
+parameter, and the album attribute names — `title`, `releaseDate`,
+`imageLinks` with `meta.width`, `tidalUrl`, and durations as ISO 8601 strings.
+What is *inferred* is the track attribute spelling (`isrc`, `trackNumber`,
+`volumeNumber`) and the cursor pagination parameter. The first thing to do
+with a real key is check those against an actual response, then delete this
+paragraph.
+
+**Do not call `/v2/trackManifests/{id}`.** It returns a real playback manifest
+— the audio itself, DRM-protected. It is the one endpoint that would turn this
+module into something siphon has promised not to be. The catalogue is what
+this reads; `resolve` finds the audio elsewhere, as it does for every other
+catalogue source.
+
+**Tidal durations are ISO 8601 strings.** `PT1H2M11S`, not a number of
+seconds, and nothing else in siphon works that way. Passing one to `float()`
+raises; passing it through untouched is worse, because every track silently
+ends up with no duration and the resolver loses a quarter of its evidence
+without anything looking broken. `tidal.seconds` handles it.
+
+**`locale.getlocale()` cannot tell you the country on macOS.** It reports
+`('C', 'UTF-8')` in a process started from Finder. The system knows, and keeps
+it in `AppleLocale` — where the language and the region are allowed to
+disagree: `en_US@rg=gbzzzz` is English as spoken by somebody in Britain.
+Reading the language tag alone would put a London user on the American
+catalogue, and Tidal's catalogue genuinely differs by territory.
+`tidal.region_from_tag` prefers the `rg` override, and it is a pure function
+so that the rule is testable.
+
 **Drain both pipes.** `_stream` in both `sources/ytdlp.py` and
 `engines/ffmpeg.py` reads stdout in the main thread and stderr in another. A
 pipe nobody is reading fills at 64 KB and the child blocks writing to it,
@@ -169,9 +205,9 @@ cannot yet handle should be a new module in `engines/` and one line in
 - **Phase 2, done.** The `127.0.0.1` window: live queue over server-sent
   events, playlist preview before committing, settings page generated from
   `credentials.status()`, drag-and-drop.
-- **Phase 3, in progress.** Deezer and Spotify done, with `resolve.py` and
-  artwork embedding. Tidal is not written yet. Neither is the confirmation
-  step for an uncertain match — see the promise below, which is currently only
-  half kept.
+- **Phase 3, in progress.** Deezer and Spotify done and verified end to end,
+  with `resolve.py` and artwork embedding. Tidal is written but **its
+  catalogue path has never run** — see below. The confirmation step for an
+  uncertain match is still missing; the promise above says so.
 - **Phase 4.** Breadth. ImageMagick, pandoc and Ghostscript engines; a
   self-hosted cobalt instance as a second fetch backend.

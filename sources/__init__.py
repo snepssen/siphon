@@ -15,7 +15,7 @@ last and claims everything left, which is most of the internet.
 import importlib
 
 # Specific first, general last. The names are module names in this package.
-ORDER = ("local", "deezer", "spotify", "ytdlp")
+ORDER = ("local", "deezer", "spotify", "tidal", "ytdlp")
 
 _loaded = {}
 

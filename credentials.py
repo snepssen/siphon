@@ -34,6 +34,7 @@ class Field:
     secret: bool = True
     placeholder: str = ""
     note: str = ""
+    required: bool = True      # whether `have()` counts the service complete
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,10 @@ SERVICES = {
         fields=(
             Field("client_id", "Client ID", secret=False),
             Field("client_secret", "Client secret"),
+            Field("country", "Country code", secret=False, required=False,
+                  placeholder="GB",
+                  note="Tidal's catalogue differs by territory. Left empty, "
+                       "siphon uses this machine's region."),
         ),
     ),
     "cobalt": Service(
@@ -108,7 +113,8 @@ SERVICES = {
         fields=(
             Field("instance_url", "Instance address", secret=False,
                   placeholder="http://localhost:9000"),
-            Field("api_key", "API key", note="Only if your instance requires one."),
+            Field("api_key", "API key", required=False,
+                  note="Only if your instance requires one."),
         ),
     ),
 }
@@ -266,13 +272,11 @@ def delete(service, key):
 
 
 def have(service):
-    """True when every field of a service is filled in."""
+    """True when every field a service actually needs is filled in."""
     definition = SERVICES.get(service)
     if definition is None:
         return False
-    return all(
-        get(service, f.key) for f in definition.fields if f.secret or not f.note
-    )
+    return all(get(service, f.key) for f in definition.fields if f.required)
 
 
 def status():
@@ -299,6 +303,7 @@ def status():
                 "key": f.key,
                 "label": f.label,
                 "secret": f.secret,
+                "required": f.required,
                 "placeholder": f.placeholder,
                 "note": f.note,
                 "set": bool(value),

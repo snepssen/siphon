@@ -98,6 +98,12 @@ cover and files it under the album.
 siphon get 'https://www.deezer.com/album/302127' --as m4a
 ```
 
+Tidal works the same way, but it is the only service here that cannot work
+without a key — there is no public way to read a Tidal playlist at all. A free
+developer app gives you one. Note that siphon has not been able to test the
+Tidal path against the real service, for exactly that reason; if it misreads
+something, that is where to look first.
+
 Deezer needs no key at all. Spotify works without one too, by reading the same
 embed its web player uses — but that path cannot see ISRCs and stops at fifty
 tracks of a long playlist, so siphon says when a list looks truncated rather
