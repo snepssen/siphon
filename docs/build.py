@@ -17,6 +17,14 @@ So the chrome is generated and the content is data:
   page.py          this project's own content: sections, prose, figures.
                    Adding a section is one dict.
 
+A section may carry structured `blocks` or a `body` naming an HTML partial in
+`sections/`. Both exist because the pages differ honestly: siphon's content is
+prose, figures and cards, which are worth having as data. Media Preflight's is
+meters, waveforms and annotated windows — markup with no regular shape, which
+in a Python string would lose every bit of editor help and gain nothing. The
+chrome is what drifts between projects, so the chrome is what is generated;
+a hand-drawn diagram is not improved by being retyped as a dict.
+
 The jump navigation is derived from the sections rather than written beside
 them, so a new section cannot be forgotten in the nav — the commonest way a
 hand-written page of this shape goes stale.
@@ -116,6 +124,13 @@ def jump(page):
 
 
 def grid(ecosystem, slug):
+    """The closing grid, in the form the whole family uses.
+
+    `data-eco-reveal` is what ecosystem.js watches to fade the cards in; siphon
+    was hand-written without it and so its grid never animated. That is the
+    kind of difference a generated chrome exists to stop.
+    """
+    copy = ecosystem["grid"]
     cards = []
     for number, project in enumerate(ecosystem["projects"], start=1):
         here = ' aria-current="page"' if project["slug"] == slug else ""
@@ -124,13 +139,18 @@ def grid(ecosystem, slug):
       <div class="ecosystem-card__glyph" aria-hidden="true">{project['glyph']}</div>
       <h3>{project['name']}</h3>
       <p>{project['blurb']}</p>
-      <span class="ecosystem-card__go">Explore {project['name']} →</span>
+      <span class="ecosystem-card__go">{project.get('go', f"Explore {project['name']} →")}</span>
     </a>""")
     joined = "\n".join(cards)
     return f"""
-<section id="ecosystem">
-  <p class="eyebrow">The workshop</p>
-  <h2>Everything else here</h2>
+<section class="ecosystem-more" aria-labelledby="ecosystem-heading" data-eco-reveal>
+  <div class="ecosystem-more__head">
+    <div>
+      <p class="ecosystem-kicker">{copy['kicker']}</p>
+      <h2 id="ecosystem-heading">{copy['heading']}</h2>
+    </div>
+    <p class="ecosystem-more__intro">{copy['intro']}</p>
+  </div>
   <div class="ecosystem-grid">
 {joined}
   </div>
@@ -186,6 +206,7 @@ def header(page):
     meta = page["meta"]
     stats = "\n".join(f"    <span>{stat}</span>" for stat in meta["stats"])
     blocks = "\n".join(block(item) for item in page.get("header_blocks", []))
+    blocks = blocks + "\n" if blocks else ""
     return f"""
 <div class="wrap">
 <header id="top">
@@ -199,30 +220,48 @@ def header(page):
 </div>
 {jump(page)}
 <div class="wrap">
-{blocks}
-"""
+{blocks}"""
 
 
 def section(item):
-    blocks = "\n".join(block(b) for b in item["blocks"])
+    if item.get("body"):
+        # A partial: bespoke markup stays markup, in a file an editor
+        # understands, and the chrome around it is still generated.
+        path = HERE / "sections" / item["body"]
+        if not path.is_file():
+            raise SystemExit(f"build.py cannot find sections/{item['body']}")
+        blocks = path.read_text(encoding="utf-8").rstrip("\n")
+    else:
+        blocks = "\n".join(block(b) for b in item["blocks"])
     identifier = f' id="{item["id"]}"' if item.get("id") else ""
+    identifier += f' {item["attrs"]}' if item.get("attrs") else ""
     eyebrow = (f'  <p class="eyebrow">{item["eyebrow"]}</p>\n'
                if item.get("eyebrow") else "")
+    title = f"  <h2>{item['heading']}</h2>\n" if item.get("heading") else ""
     return f"""
 <section{identifier}>
-{eyebrow}  <h2>{item['heading']}</h2>
-{blocks}
+{eyebrow}{title}{blocks}
 </section>
 """
 
 
 def footer(page):
-    lines = "\n".join(f"  <p{'' if i == 0 else ' class=\"note\"'}>{line}</p>"
-                      for i, line in enumerate(page["footer"]))
+    """Plain `<footer>`, as the siblings have it.
+
+    Not `<footer class="contact">`: `.contact` is the flex row of link buttons
+    used inside a contact section, and siphon had picked it up by accident,
+    laying its two closing lines out side by side.
+    """
+    lines = page["footer"]
+    if len(lines) == 1:
+        body = f"  {lines[0]}"
+    else:
+        body = "\n".join(f"  <p>{line}</p>" for line in lines)
     return f"""
-<footer class="contact">
-{lines}
+<footer>
+{body}
 </footer>
+
 </div>
 
 <script src="ecosystem.js"></script>
@@ -236,8 +275,15 @@ def render():
     ecosystem = load_ecosystem()
     slug = page["meta"]["slug"]
     parts = [head(page), rail(ecosystem, slug), header(page)]
-    parts += [section(item) for item in page["sections"]]
-    parts.append(grid(ecosystem, slug))
+    placed = False
+    for item in page["sections"]:
+        if item.get("grid"):          # the ecosystem grid, in its place
+            parts.append(grid(ecosystem, slug))
+            placed = True
+        else:
+            parts.append(section(item))
+    if not placed:                    # no marker: it closes the page
+        parts.append(grid(ecosystem, slug))
     parts.append(footer(page))
     return "".join(parts)
 
@@ -263,7 +309,7 @@ def main():
     target.write_text(built, encoding="utf-8")
     page = load_page()
     print(f"docs/index.html — {len(built.splitlines())} lines, "
-          f"{len(page['sections'])} sections, "
+          f"{len([s for s in page['sections'] if not s.get('grid')])} sections, "
           f"{len(load_ecosystem()['projects'])} projects in the rail")
     return 0
 

@@ -1,13 +1,12 @@
 {
-  "_comment": [
-    "The snepssen projects, in the order they appear in the rail and the grid.",
-    "Shared across every project page the same way ecosystem.css and",
-    "ecosystem.js are: one file, copied byte-identically into each docs/.",
-    "Adding a project is an entry here plus a rebuild — no page is edited."
-  ],
   "brand": {
     "label": "snepssen / workshop",
     "url": "https://snepssen.github.io/tools-core/"
+  },
+  "grid": {
+    "kicker": "The wider workshop",
+    "heading": "Five tools, one local-first practice.",
+    "intro": "Move between guided-meditation authoring, measured speech, lyric video, delivery validation, and the small field tools that support all of them."
   },
   "projects": [
     {
@@ -62,7 +61,8 @@
       "index": "FIELD TOOLS",
       "platforms": "Python · shell",
       "glyph": "[ measure → keep ]",
-      "blurb": "The small utilities the other projects were built out of, kept where they can be read."
+      "blurb": "Small utilities for audio inspection, corpus work, authoring, and repeatable checks.",
+      "go": "Open the toolbox →"
     }
   ]
 }
