@@ -3,201 +3,363 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>siphon</title>
 <style>
-  :root {
-    color-scheme: light dark;
-    --bg: #f6f6f4; --panel: #ffffff; --ink: #16181c; --quiet: #5d646e;
-    --line: #dcdfe4; --fail: #b3261e; --warn: #8a5a00; --pass: #1c6b3f;
-    --accent: #1f5fbf; --code: #f0f1f3;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #16181c; --panel: #1e2127; --ink: #e8eaee; --quiet: #99a1ad;
-      --line: #313640; --fail: #ff8a80; --warn: #f0b849; --pass: #6fd39a;
-      --accent: #7aa7ff; --code: #14161a;
-    }
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 28px 20px 60px; background: var(--bg); color: var(--ink);
-    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
-          "DejaVu Sans", sans-serif;
-  }
-  main { max-width: 780px; margin: 0 auto; }
-  h1 { font-size: 19px; margin: 0 0 2px; letter-spacing: -0.01em; }
-  h2 { font-size: 14px; margin: 0 0 12px; font-weight: 600; }
-  .sub { color: var(--quiet); font-size: 13px; margin: 0 0 22px; }
-  .head { display: flex; align-items: baseline; gap: 12px; }
-  .head .spacer { flex: 1; }
-  .panel {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-    padding: 18px; margin-bottom: 16px;
-  }
-  .drop {
-    border: 1.5px dashed var(--line); border-radius: 8px; padding: 22px 18px;
-    text-align: center; transition: border-color .15s, background .15s;
-  }
-  .drop.over { border-color: var(--accent);
-               background: color-mix(in srgb, var(--accent) 7%, transparent); }
-  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
-  .row label { font-size: 13px; color: var(--quiet); }
-  select, input[type=text], input[type=password], button, textarea {
-    font: inherit; color: var(--ink); background: var(--panel);
-    border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px;
-  }
-  input[type=text], input[type=password] {
-    flex: 1; min-width: 200px; font-size: 13px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  }
-  button { cursor: pointer; }
-  button:hover:not(:disabled) { border-color: var(--accent); }
-  button:disabled { opacity: .45; cursor: default; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button.quiet { border-color: transparent; background: transparent; color: var(--quiet);
-                 padding: 4px 7px; font-size: 12.5px; }
-  button.quiet:hover:not(:disabled) { color: var(--ink); border-color: var(--line); }
-  .note { font-size: 12.5px; color: var(--quiet); margin-top: 8px; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-          font-size: 12.5px; word-break: break-all; }
+/* ---------------------------------------------------------------------------
+   The window and the project page share a palette on purpose: the thing you
+   download and the page you read about it should look like one program.
 
-  .job { border-top: 1px solid var(--line); padding: 12px 0; }
-  .job:first-child { border-top: 0; padding-top: 2px; }
-  .job .title { display: flex; gap: 10px; align-items: baseline; }
-  .job .title strong { font-weight: 500; font-size: 14px; flex: 1;
-                       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .job .state { font-size: 12px; color: var(--quiet); white-space: nowrap; }
-  .job .msg { font-size: 12.5px; color: var(--quiet); margin-top: 3px; }
-  .job .msg.bad { color: var(--fail); }
-  .job .acts { display: flex; gap: 4px; }
-  .track { height: 4px; border-radius: 2px; background: var(--line);
-           margin-top: 8px; overflow: hidden; }
-  .track > i { display: block; height: 100%; background: var(--accent);
-               width: 0; transition: width .2s linear; }
-  .track.done > i { background: var(--pass); }
-  .track.bad > i { background: var(--fail); }
-  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--quiet);
-         display: inline-block; flex: 0 0 auto; }
-  .dot.running { background: var(--accent); }
-  .dot.done { background: var(--pass); }
-  .dot.failed { background: var(--fail); }
-  .dot.waiting { background: var(--warn); }
+   No web fonts. This page is served from 127.0.0.1 and has to open with the
+   network down, so the system stack is not a compromise here — it is the only
+   honest choice, and on every platform it is the best face available.
+   --------------------------------------------------------------------------- */
+:root{
+  color-scheme: light dark;
+  --ground:#F6F6F4; --surface:#FFFFFF; --raise:#EDEEF1; --sunk:#E7E9ED;
+  --line:#DCDFE4; --line-soft:#E8EAEE;
+  --ink:#16181C; --muted:#5D646E; --faint:#878E99;
+  --accent:#1F5FBF; --accent-ink:#FFFFFF; --accent-soft:#E8EFFB;
+  --pass:#1C6B3F; --warn:#8A5A00; --fail:#B3261E;
+  --pass-soft:#E4F2EA; --warn-soft:#FBF0DC; --fail-soft:#FBE7E5;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px -12px rgba(16,24,40,.14);
+  --radius:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --ground:#121418; --surface:#1A1D23; --raise:#22262E; --sunk:#15181D;
+    --line:#2C313A; --line-soft:#242931;
+    --ink:#E9EBEF; --muted:#9BA3AF; --faint:#6E7684;
+    --accent:#7AA7FF; --accent-ink:#0E1220; --accent-soft:#1B2740;
+    --pass:#6FD39A; --warn:#F0B849; --fail:#FF8A80;
+    --pass-soft:#16281F; --warn-soft:#2A2213; --fail-soft:#2B1917;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -16px rgba(0,0,0,.7);
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font:400 14.5px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,
+       "Helvetica Neue","DejaVu Sans",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+main{max-width:820px;margin:0 auto;padding:22px 20px 80px}
 
-  .ask { border: 1px solid var(--warn); border-radius: 8px; padding: 12px;
-         margin-top: 10px;
-         background: color-mix(in srgb, var(--warn) 7%, transparent); }
-  .ask h4 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
-  .opt { display: flex; gap: 10px; align-items: baseline; padding: 6px 0;
-         border-top: 1px solid var(--line); }
-  .opt:first-of-type { border-top: 0; }
-  .opt .pc { font-size: 12px; color: var(--quiet); width: 34px; flex: 0 0 auto;
-             text-align: right; font-variant-numeric: tabular-nums; }
-  .opt .who { flex: 1; min-width: 0; }
-  .opt .who b { display: block; font-weight: 500; font-size: 13px;
-                overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .opt .who span { font-size: 12px; color: var(--quiet); }
+/* ---- header ------------------------------------------------------------ */
+.top{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.mark{width:30px;height:30px;flex:0 0 auto}
+.name{font-size:19px;font-weight:650;letter-spacing:-.02em;line-height:1}
+.where{font-size:12.5px;color:var(--muted);margin-top:3px}
+.where button{
+  background:none;border:0;padding:0;font:inherit;color:var(--muted);
+  cursor:pointer;text-decoration:underline;text-underline-offset:2px;
+  text-decoration-color:var(--line);
+}
+.where button:hover{color:var(--ink)}
+.top .spacer{flex:1}
 
-  ol.items { margin: 0; padding: 0 0 0 26px; max-height: 260px; overflow-y: auto;
-             font-size: 13px; color: var(--quiet); }
-  ol.items li { padding: 1px 0; }
-  ol.items li b { font-weight: 500; color: var(--ink); }
+/* ---- buttons ----------------------------------------------------------- */
+button{font:inherit;cursor:pointer}
+.btn{
+  border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  border-radius:9px;padding:8px 13px;font-size:13.5px;font-weight:500;
+  transition:border-color .13s, background .13s, transform .06s;
+}
+.btn:hover:not(:disabled){border-color:var(--accent);background:var(--raise)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover:not(:disabled){filter:brightness(1.08);background:var(--accent)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted);
+           padding:5px 9px;font-size:12.5px}
+.btn.ghost:hover:not(:disabled){color:var(--ink);background:var(--raise)}
+.btn.small{padding:5px 10px;font-size:12.5px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
 
-  .svc { border-top: 1px solid var(--line); padding: 14px 0; }
-  .svc:first-of-type { border-top: 0; }
-  .svc .why { font-size: 13px; color: var(--quiet); margin: 2px 0 10px; }
-  .svc ol { font-size: 12.5px; color: var(--quiet); margin: 8px 0 0; padding-left: 20px; }
-  .svc ol li { margin-bottom: 4px; }
-  .field { display: flex; gap: 8px; align-items: center; margin-bottom: 7px; }
-  .field label { font-size: 12.5px; color: var(--quiet); width: 108px; flex: 0 0 auto; }
-  .ok { color: var(--pass); } .missing { color: var(--quiet); }
-  .prog { display: flex; gap: 10px; font-size: 12.5px; padding: 3px 0; }
-  .prog .n { width: 76px; color: var(--quiet); }
-  [hidden] { display: none !important; }
-  .flash { font-size: 13px; padding: 9px 12px; border-radius: 7px; margin-bottom: 12px;
-           background: color-mix(in srgb, var(--fail) 12%, transparent); color: var(--fail); }
-  .flash.info { background: color-mix(in srgb, var(--accent) 12%, transparent);
-                color: var(--accent); }
-  pre.mono { background: var(--code); border: 1px solid var(--line);
-             border-radius: 7px; padding: 10px; max-height: 180px;
-             overflow: auto; white-space: pre-wrap; margin: 10px 0 0; }
+/* ---- panels ------------------------------------------------------------ */
+.panel{
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px;
+}
+.panel-head{
+  display:flex;align-items:center;gap:10px;
+  padding:13px 16px;border-bottom:1px solid var(--line-soft);
+}
+.panel-head h2{margin:0;font-size:13px;font-weight:650;letter-spacing:.02em;
+               text-transform:uppercase;color:var(--muted)}
+.panel-head .spacer{flex:1}
+.panel-body{padding:16px}
+
+/* ---- the intake -------------------------------------------------------- */
+.intake{padding:16px}
+.field{display:flex;gap:9px;align-items:stretch}
+.field input{
+  flex:1;min-width:0;font:inherit;font-size:14px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--ink);background:var(--sunk);
+  border:1px solid var(--line);border-radius:10px;padding:11px 13px;
+}
+.field input::placeholder{color:var(--faint);font-family:inherit}
+.field input:focus{outline:none;border-color:var(--accent);
+                   box-shadow:0 0 0 3px var(--accent-soft)}
+.field .btn{padding-inline:18px;white-space:nowrap}
+
+/* the format chooser: a kind, then the formats in it. Thirty options in a
+   dropdown is a list nobody reads; this is the same information laid out. */
+.kinds{display:flex;gap:4px;margin:14px 0 10px;flex-wrap:wrap}
+.kind{
+  border:0;background:none;color:var(--muted);font-size:13px;font-weight:550;
+  padding:5px 10px;border-radius:7px;
+}
+.kind:hover{color:var(--ink);background:var(--raise)}
+.kind[aria-selected="true"]{background:var(--accent-soft);color:var(--accent)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  border:1px solid var(--line);background:var(--surface);color:var(--muted);
+  border-radius:8px;padding:5px 11px;font-size:13px;font-weight:500;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+.chip:hover{border-color:var(--accent);color:var(--ink)}
+.chip[aria-pressed="true"]{
+  background:var(--accent);border-color:var(--accent);color:var(--accent-ink);
+}
+.chip.unavailable{opacity:.5}
+.summary{font-size:12.5px;color:var(--muted);margin-top:11px;min-height:1.5em}
+.hint{font-size:12.5px;color:var(--faint);margin:12px 0 0}
+
+/* ---- the drop overlay: the whole window is the target ------------------ */
+#curtain{
+  position:fixed;inset:0;z-index:50;display:none;
+  align-items:center;justify-content:center;
+  background:color-mix(in srgb, var(--ground) 82%, transparent);
+  backdrop-filter:blur(3px);
+}
+#curtain.on{display:flex}
+#curtain div{
+  border:2px dashed var(--accent);border-radius:20px;padding:34px 46px;
+  background:var(--surface);text-align:center;box-shadow:var(--shadow);
+}
+#curtain strong{display:block;font-size:17px;margin-bottom:4px}
+#curtain span{font-size:13px;color:var(--muted)}
+
+/* ---- the queue --------------------------------------------------------- */
+.job{padding:14px 16px;border-top:1px solid var(--line-soft)}
+.job:first-child{border-top:0}
+.job-top{display:flex;align-items:center;gap:10px}
+.state-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;
+           background:var(--faint)}
+.state-dot.running{background:var(--accent);animation:pulse 1.5s ease-in-out infinite}
+.state-dot.done{background:var(--pass)}
+.state-dot.failed{background:var(--fail)}
+.state-dot.waiting{background:var(--warn)}
+.state-dot.cancelled{background:var(--faint)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.job-title{
+  flex:1;min-width:0;font-size:14px;font-weight:550;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.pill{
+  font-size:11.5px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;
+  padding:3px 8px;border-radius:999px;white-space:nowrap;
+  background:var(--raise);color:var(--muted);
+}
+.pill.running{background:var(--accent-soft);color:var(--accent)}
+.pill.done{background:var(--pass-soft);color:var(--pass)}
+.pill.failed{background:var(--fail-soft);color:var(--fail)}
+.pill.waiting{background:var(--warn-soft);color:var(--warn)}
+.job-acts{display:flex;gap:2px;flex:0 0 auto}
+.job-note{font-size:12.5px;color:var(--muted);margin-top:5px;
+          overflow-wrap:anywhere}
+.job-note.bad{color:var(--fail)}
+.job-note.quiet{color:var(--faint)}
+.track{height:5px;border-radius:3px;background:var(--sunk);margin-top:9px;
+       overflow:hidden}
+.track > i{display:block;height:100%;border-radius:3px;background:var(--accent);
+           width:0;transition:width .25s linear}
+.numbers{display:flex;gap:14px;font-size:12px;color:var(--faint);margin-top:6px;
+         font-variant-numeric:tabular-nums}
+
+/* ---- the question an uncertain match asks ------------------------------ */
+.ask{
+  border:1px solid var(--warn);border-radius:11px;margin-top:11px;
+  background:var(--warn-soft);overflow:hidden;
+}
+.ask h4{margin:0;padding:10px 13px;font-size:12.5px;font-weight:650;
+        border-bottom:1px solid color-mix(in srgb,var(--warn) 30%,transparent)}
+.opt{display:flex;gap:11px;align-items:center;padding:9px 13px;
+     border-top:1px solid color-mix(in srgb,var(--warn) 16%,transparent)}
+.opt:first-of-type{border-top:0}
+.score{font-size:12px;font-weight:650;width:38px;flex:0 0 auto;text-align:right;
+       font-variant-numeric:tabular-nums;color:var(--warn)}
+.opt-what{flex:1;min-width:0}
+.opt-what b{display:block;font-weight:550;font-size:13.5px;
+            overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.opt-what span{font-size:12px;color:var(--muted)}
+.ask .foot{padding:9px 13px;font-size:12px;color:var(--muted);
+           border-top:1px solid color-mix(in srgb,var(--warn) 16%,transparent)}
+
+/* ---- empty state ------------------------------------------------------- */
+.empty{padding:34px 20px;text-align:center}
+.empty svg{opacity:.3;margin-bottom:12px}
+.empty p{margin:0 0 6px;color:var(--muted);font-size:13.5px}
+.empty p.lead{color:var(--ink);font-size:15px;font-weight:550}
+
+/* ---- preview of a playlist -------------------------------------------- */
+ol.items{margin:0;padding:12px 16px 12px 40px;max-height:290px;overflow-y:auto;
+         font-size:13px;color:var(--muted)}
+ol.items li{padding:2px 0}
+ol.items li b{font-weight:550;color:var(--ink)}
+
+/* ---- settings ---------------------------------------------------------- */
+.rows{display:grid;gap:2px}
+.row{display:flex;gap:12px;align-items:baseline;padding:5px 0;font-size:13px}
+.row .k{width:92px;flex:0 0 auto;color:var(--muted);
+        font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+        font-size:12.5px}
+.row .v{flex:1;min-width:0;overflow-wrap:anywhere}
+.ok{color:var(--pass)} .no{color:var(--faint)}
+.svc{padding:15px 0;border-top:1px solid var(--line-soft)}
+.svc:first-of-type{border-top:0;padding-top:4px}
+.svc h3{margin:0 0 3px;font-size:14px;font-weight:600}
+.svc .why{font-size:12.5px;color:var(--muted);margin:0 0 11px}
+.cred{display:flex;gap:8px;align-items:center;margin-bottom:7px}
+.cred label{font-size:12.5px;color:var(--muted);width:104px;flex:0 0 auto}
+.cred input{
+  flex:1;min-width:0;font:inherit;font-size:13px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--ink);background:var(--sunk);border:1px solid var(--line);
+  border-radius:8px;padding:7px 10px;
+}
+.cred input:focus{outline:none;border-color:var(--accent);
+                  box-shadow:0 0 0 3px var(--accent-soft)}
+.steps{font-size:12.5px;color:var(--muted);margin:9px 0 0;padding-left:19px}
+.steps li{margin-bottom:3px}
+a{color:var(--accent);text-underline-offset:2px}
+pre.log{background:var(--sunk);border:1px solid var(--line);border-radius:9px;
+        padding:11px;max-height:190px;overflow:auto;white-space:pre-wrap;
+        margin:11px 0 0;font-size:12.5px}
+
+/* ---- flash ------------------------------------------------------------- */
+.flash{
+  font-size:13px;padding:10px 13px;border-radius:10px;margin-bottom:14px;
+  background:var(--fail-soft);color:var(--fail);
+  border:1px solid color-mix(in srgb,var(--fail) 28%,transparent);
+}
+.flash.info{background:var(--accent-soft);color:var(--accent);
+            border-color:color-mix(in srgb,var(--accent) 28%,transparent)}
+[hidden]{display:none !important}
+
+@media (max-width:560px){
+  /* Wrapped, the button should span rather than float at the left edge
+     looking like an afterthought. */
+  .field{flex-wrap:wrap}
+  .field input{flex-basis:100%}
+  .field .btn{flex:1}
+  .row .k{width:78px}
+  .cred label{width:88px}
+}
 </style>
 
+<div id="curtain" aria-hidden="true">
+  <div><strong>Drop it anywhere</strong><span>a file, a folder, or a link</span></div>
+</div>
+
 <main>
-  <div class="head">
+  <div class="top">
+    <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+      <rect x="2" y="2" width="60" height="60" rx="16" fill="var(--raise)"/>
+      <path d="M16 20 L32 38 L48 20" fill="none" stroke="var(--accent)"
+            stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M32 38 L32 45" stroke="var(--accent)" stroke-width="7"
+            stroke-linecap="round"/>
+      <circle cx="32" cy="54" r="4.5" fill="var(--accent)"/>
+    </svg>
     <div>
-      <h1>siphon</h1>
-      <p class="sub" id="where">—</p>
+      <div class="name">siphon</div>
+      <div class="where">Files go to <button id="reveal-out">—</button></div>
     </div>
     <div class="spacer"></div>
-    <button class="quiet" id="toggle-settings">Settings</button>
+    <button class="btn ghost" id="toggle-settings" aria-expanded="false">Settings</button>
   </div>
 
   <div id="flash" class="flash" hidden></div>
 
   <!-- ---------------------------------------------------------------- -->
-  <section class="panel" id="add-panel">
-    <div class="drop" id="drop">
-      <div class="row" style="margin:0">
-        <input type="text" id="url" autofocus
+  <section class="panel">
+    <div class="intake">
+      <div class="field">
+        <input type="text" id="url" autofocus autocomplete="off" spellcheck="false"
                placeholder="Paste a link, or the path to a file or folder">
-        <select id="format"></select>
-        <button class="primary" id="go">Add</button>
+        <button class="btn primary" id="go">Add</button>
       </div>
-      <p class="note" id="format-note">—</p>
+      <div class="kinds" id="kinds" role="tablist" aria-label="Kind of output"></div>
+      <div class="chips" id="chips" role="group" aria-label="Format"></div>
+      <p class="summary" id="summary">—</p>
+      <p class="hint">A link or a path — both go the same way. Dragging in from
+        Finder works too.</p>
     </div>
-    <p class="note">
-      A link or a path — both go the same way. Dragging a file in from Finder
-      works too.
-    </p>
   </section>
 
   <!-- ---------------------------------------------------------------- -->
   <section class="panel" id="preview" hidden>
-    <h2 id="preview-title">—</h2>
-    <!-- The buttons go above the list on purpose. The list has its own
-         scrollbar, so with a thousand items anything below it is unreachable
-         without scrolling past a screenful of titles first. -->
-    <div class="row" style="margin-top:0;margin-bottom:12px">
-      <button class="primary" id="preview-go">Fetch all</button>
-      <button id="preview-cancel">Never mind</button>
+    <div class="panel-head">
+      <h2 id="preview-title">—</h2>
+      <div class="spacer"></div>
+      <button class="btn small" id="preview-cancel">Never mind</button>
+      <button class="btn primary small" id="preview-go">Fetch all</button>
     </div>
     <ol class="items" id="preview-items"></ol>
   </section>
 
   <!-- ---------------------------------------------------------------- -->
-  <section class="panel" id="queue-panel" hidden>
-    <div class="head" style="margin-bottom:10px">
-      <h2 style="margin:0">Queue</h2>
+  <section class="panel" id="queue-panel">
+    <div class="panel-head">
+      <h2>Queue</h2>
+      <span class="pill" id="queue-count" hidden></span>
       <div class="spacer"></div>
-      <button class="quiet" id="forget">Clear finished</button>
+      <button class="btn ghost" id="forget">Clear finished</button>
     </div>
     <div id="queue"></div>
+    <div class="empty" id="empty">
+      <svg width="46" height="46" viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M16 20 L32 38 L48 20" fill="none" stroke="currentColor"
+              stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M32 38 L32 45" stroke="currentColor" stroke-width="6"
+              stroke-linecap="round"/>
+        <circle cx="32" cy="54" r="4" fill="currentColor"/>
+      </svg>
+      <p class="lead">Nothing in the queue.</p>
+      <p>Paste a link above, or drop a file in to convert it.</p>
+    </div>
   </section>
 
   <!-- ---------------------------------------------------------------- -->
   <section class="panel" id="settings" hidden>
-    <h2>Programs</h2>
-    <div id="programs"></div>
-    <div id="install-offer" hidden>
-      <p class="note" id="install-what">—</p>
-      <div class="row">
-        <button class="primary" id="install-all">Install them</button>
+    <div class="panel-head"><h2>Programs</h2></div>
+    <div class="panel-body">
+      <div class="rows" id="programs"></div>
+      <div id="install-offer" hidden>
+        <p class="hint" id="install-what" style="margin-top:14px">—</p>
+        <button class="btn primary small" id="install-all" style="margin-top:9px">Install</button>
+        <pre class="log mono" id="install-log" hidden></pre>
       </div>
-      <pre class="mono" id="install-log" hidden></pre>
     </div>
 
-    <h2 style="margin-top:22px">Your own cobalt</h2>
-    <p class="note" style="margin-top:-6px">
-      A second way to fetch, for when a site has broken for yt-dlp. siphon
-      installs and runs it from source — no Docker.
-    </p>
-    <div id="cobalt-state" class="prog"><span class="n">status</span><span class="missing">checking…</span></div>
-    <div class="row" id="cobalt-actions"></div>
+    <div class="panel-head"><h2>Your own cobalt</h2></div>
+    <div class="panel-body">
+      <p class="hint" style="margin:0 0 11px">A second way to fetch, for when a
+        site has broken for yt-dlp. siphon installs and runs it from source —
+        no Docker. It also runs a YouTube token provider, which yt-dlp uses
+        too.</p>
+      <div class="rows" id="cobalt-state"></div>
+      <div style="display:flex;gap:7px;margin-top:11px;flex-wrap:wrap" id="cobalt-actions"></div>
+    </div>
 
-    <h2 style="margin-top:22px">Keys</h2>
-    <p class="note" style="margin-top:-6px" id="storage-note">—</p>
-    <div id="services"></div>
-
-    <h2 style="margin-top:22px">Needs nothing</h2>
-    <div id="free"></div>
+    <div class="panel-head"><h2>Keys</h2></div>
+    <div class="panel-body">
+      <p class="hint" style="margin:0 0 13px" id="storage-note">—</p>
+      <div id="services"></div>
+      <div class="rows" id="free" style="margin-top:14px"></div>
+    </div>
   </section>
 </main>
 
@@ -209,7 +371,8 @@
 const TOKEN = new URLSearchParams(location.search).get("t") || "";
 
 const $ = (id) => document.getElementById(id);
-const state = { jobs: [], formats: [], preview: null, output: "" };
+const state = { jobs: [], formats: [], kind: null, format: null,
+                preview: null, output: "", programs: {} };
 
 async function api(path, body) {
   const options = {
@@ -264,136 +427,201 @@ function longClock(seconds) {
 const STAGE = { resolve: "looking up", fetch: "fetching", convert: "converting",
                 tag: "tagging", place: "filing" };
 
+const KIND_LABEL = { audio: "Audio", video: "Video", image: "Images",
+                     document: "Documents" };
+
 function itemName(item) {
   if (item.artist && item.title) return `${item.artist} — ${item.title}`;
   return item.title || item.url || item.path || "untitled";
 }
 
+function basename(path) {
+  return (path || "").split("/").filter(Boolean).pop() || path || "";
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
 // ---------------------------------------------------------------------------
-// Rendering
+// Choosing a format
+// ---------------------------------------------------------------------------
+
+function renderKinds() {
+  const kinds = [];
+  for (const format of state.formats) {
+    if (!kinds.includes(format.kind)) kinds.push(format.kind);
+  }
+  $("kinds").replaceChildren(...kinds.map((kind) => {
+    const button = el("button", "kind", KIND_LABEL[kind] || kind);
+    button.type = "button";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(kind === state.kind));
+    button.addEventListener("click", () => {
+      state.kind = kind;
+      // Land on the first format of the kind, which is the plainest one.
+      const first = state.formats.find((f) => f.kind === kind);
+      if (first) state.format = first.name;
+      renderKinds();
+      renderChips();
+    });
+    return button;
+  }));
+}
+
+function unavailableReason(format) {
+  // A format whose engine is not installed is still shown — "webp is not a
+  // format siphon knows" and "webp needs one more brew command" are very
+  // different things to be told.
+  const programs = state.programs || {};
+  const missing = (key) => programs[key] && !programs[key].present;
+  if (format.name === "webp" && missing("magick")) return "needs ImageMagick";
+  if (format.kind === "document" && missing("pandoc")) return "needs pandoc";
+  if (["xlsx", "ods", "csv", "pptx", "odt"].includes(format.name) && missing("soffice"))
+    return "needs LibreOffice";
+  return null;
+}
+
+function renderChips() {
+  const here = state.formats.filter((f) => f.kind === state.kind);
+  $("chips").replaceChildren(...here.map((format) => {
+    const chip = el("button", "chip", format.name);
+    chip.type = "button";
+    const reason = unavailableReason(format);
+    if (reason) { chip.classList.add("unavailable"); chip.title = reason; }
+    chip.setAttribute("aria-pressed", String(format.name === state.format));
+    chip.addEventListener("click", () => {
+      state.format = format.name;
+      renderChips();
+    });
+    return chip;
+  }));
+  const chosen = state.formats.find((f) => f.name === state.format);
+  const reason = chosen ? unavailableReason(chosen) : null;
+  $("summary").textContent = chosen
+    ? chosen.summary + (reason ? ` — ${reason}, see Settings` : "")
+    : "";
+}
+
+// ---------------------------------------------------------------------------
+// The queue
 // ---------------------------------------------------------------------------
 
 function render() {
   const jobs = state.jobs;
-  $("queue-panel").hidden = jobs.length === 0;
-  const queue = $("queue");
-  queue.replaceChildren(...jobs.slice().reverse().map(renderJob));
+  const running = jobs.filter((j) => j.state === "running").length;
+  const waiting = jobs.filter((j) => j.state === "waiting").length;
+
+  const count = $("queue-count");
+  if (waiting) { count.hidden = false; count.className = "pill waiting";
+                 count.textContent = `${waiting} need${waiting === 1 ? "s" : ""} you`; }
+  else if (running) { count.hidden = false; count.className = "pill running";
+                      count.textContent = `${running} running`; }
+  else { count.hidden = true; }
+
+  $("empty").hidden = jobs.length > 0;
+  $("forget").hidden = !jobs.some((j) => ["done", "failed", "cancelled"].includes(j.state));
+  $("queue").replaceChildren(...jobs.slice().reverse().map(renderJob));
 }
 
 function renderJob(job) {
-  const node = document.createElement("div");
-  node.className = "job";
-
+  const node = el("div", "job");
   const running = job.state === "running";
   const asking = job.state === "waiting";
   const failed = job.state === "failed";
   const done = job.state === "done";
 
-  const title = document.createElement("div");
-  title.className = "title";
+  const top = el("div", "job-top");
+  top.append(el("span", `state-dot ${job.state}`));
+  top.append(el("div", "job-title", itemName(job.item)));
 
-  const dot = document.createElement("span");
-  dot.className = `dot ${job.state}`;
-  const name = document.createElement("strong");
-  name.textContent = itemName(job.item);
-  const stateLabel = document.createElement("span");
-  stateLabel.className = "state";
-  stateLabel.textContent = running
-    ? (STAGE[job.stage] || "starting")
-    : job.state === "queued" ? "queued"
-    : asking ? "needs you" : job.state;
+  const label = running ? (STAGE[job.stage] || "starting")
+    : asking ? "needs you"
+    : job.state === "queued" ? "queued" : job.state;
+  top.append(el("span", `pill ${job.state}`, label));
 
-  const acts = document.createElement("div");
-  acts.className = "acts";
+  const acts = el("div", "job-acts");
   if (done && job.output_path) acts.append(button("Show", () =>
     api("/api/reveal", { path: job.output_path })));
   if (running || job.state === "queued") acts.append(button("Stop", () =>
     api("/api/cancel", { id: job.id })));
+  if (asking) acts.append(button("Skip", () => api("/api/skip", { id: job.id })));
   if (failed || job.state === "cancelled") acts.append(button("Try again", () =>
     api("/api/retry", { id: job.id })));
-  if (asking) acts.append(button("Skip", () => api("/api/skip", { id: job.id })));
+  top.append(acts);
+  node.append(top);
 
-  title.append(dot, name, stateLabel, acts);
-
-  const message = document.createElement("div");
-  message.className = failed ? "msg bad" : "msg";
-  message.textContent = job.message || "";
-
-  node.append(title, message);
+  if (done && job.output_path) {
+    const line = el("div", "job-note quiet");
+    line.append(el("span", "mono", basename(job.output_path)));
+    if (job.extra_outputs?.length) {
+      line.append(` and ${job.extra_outputs.length} more`);
+    }
+    const confidence = job.item.match_confidence;
+    if (confidence !== null && confidence !== undefined && confidence < 0.75) {
+      line.append(` · matched at ${Math.round(confidence * 100)}%, worth a listen`);
+    }
+    node.append(line);
+  } else if (job.message) {
+    node.append(el("div", failed ? "job-note bad" : "job-note", job.message));
+  }
 
   if (asking && job.choice) node.append(renderChoice(job));
 
   if (running) {
-    const track = document.createElement("div");
-    track.className = "track";
-    const bar = document.createElement("i");
+    const track = el("div", "track");
+    const bar = el("i");
     bar.style.width = `${Math.round((job.progress || 0) * 100)}%`;
     track.append(bar);
     node.append(track);
 
-    const bits = [];
-    if (job.bytes_total) bits.push(`${size(job.bytes_done)} of ${size(job.bytes_total)}`);
-    if (job.speed) bits.push(`${(job.speed / 1e6).toFixed(1)} MB/s`);
-    if (job.eta) bits.push(`${clock(job.eta)} left`);
-    if (bits.length) {
-      const detail = document.createElement("div");
-      detail.className = "msg";
-      detail.textContent = bits.join(" · ");
-      node.append(detail);
+    const numbers = el("div", "numbers");
+    if (job.bytes_total) {
+      numbers.append(el("span", null, `${size(job.bytes_done)} of ${size(job.bytes_total)}`));
     }
+    if (job.speed) numbers.append(el("span", null, `${(job.speed / 1e6).toFixed(1)} MB/s`));
+    if (job.eta) numbers.append(el("span", null, `${clock(job.eta)} left`));
+    if (numbers.childElementCount) node.append(numbers);
   }
   return node;
 }
 
 function renderChoice(job) {
-  // The whole point of the waiting state: the options are laid out and
-  // nothing is fetched until one of them is picked. Each row says what it is
-  // and why it scored what it did, because "82%" on its own is not a reason.
-  const box = document.createElement("div");
-  box.className = "ask";
-
-  const heading = document.createElement("h4");
-  heading.textContent = "Which one is it?";
-  box.append(heading);
+  // The whole point of the waiting state: the options are laid out and nothing
+  // is fetched until one is picked. Each row says why it scored what it did,
+  // because "82%" on its own is not a reason.
+  const box = el("div", "ask");
+  box.append(el("h4", null, "Which one is it?"));
 
   for (const option of job.choice.options || []) {
-    const row = document.createElement("div");
-    row.className = "opt";
+    const row = el("div", "opt");
+    row.append(el("div", "score", `${Math.round((option.score || 0) * 100)}%`));
 
-    const percent = document.createElement("span");
-    percent.className = "pc";
-    percent.textContent = `${Math.round((option.score || 0) * 100)}%`;
-
-    const who = document.createElement("div");
-    who.className = "who";
-    const name = document.createElement("b");
-    name.textContent = option.title || "untitled";
-    const detail = document.createElement("span");
+    const what = el("div", "opt-what");
+    what.append(el("b", null, option.title || "untitled"));
     const bits = [option.uploader];
     if (option.duration) bits.push(clock(option.duration));
     if (option.reasons?.length) bits.push(option.reasons.join(", "));
-    detail.textContent = bits.filter(Boolean).join(" · ");
-    who.append(name, detail);
+    what.append(el("span", null, bits.filter(Boolean).join(" · ")));
+    row.append(what);
 
     const use = button("Use this", () =>
       api("/api/choose", { id: job.id, url: option.url }));
-    use.className = "";
-
-    row.append(percent, who, use);
+    use.className = "btn small";
+    row.append(use);
     box.append(row);
   }
-
-  const none = document.createElement("p");
-  none.className = "note";
-  none.textContent = "None of these? Skip it — nothing has been downloaded.";
-  box.append(none);
+  box.append(el("div", "foot",
+    "None of these? Skip it — nothing has been downloaded."));
   return box;
 }
 
 function button(label, handler) {
-  const element = document.createElement("button");
-  element.className = "quiet";
-  element.textContent = label;
+  const element = el("button", "btn ghost", label);
+  element.type = "button";
   element.addEventListener("click", async () => {
     element.disabled = true;
     try { await handler(); } catch (error) { flash(error.message); }
@@ -423,7 +651,7 @@ async function submit() {
     clearTimeout(patience);
     flash("");
     if (found.count === 1) {
-      await api("/api/add", { items: found.items, format: $("format").value });
+      await api("/api/add", { items: found.items, format: state.format });
       $("url").value = "";
     } else if (found.count > 1) {
       showPreview(found);
@@ -441,8 +669,8 @@ async function submit() {
 
 function showPreview(found) {
   state.preview = found;
-  // The running time is the honest unit here. "1120 items" sounds like a
-  // list; "six days of video" is what clicking Fetch all actually means.
+  // The running time is the honest unit here. "1120 items" sounds like a list;
+  // "six days of video" is what clicking Fetch all actually means.
   const total = found.items.reduce((sum, item) => sum + (item.duration || 0), 0);
   const parts = [`${found.count} items`];
   if (total > 0) parts.push(longClock(total));
@@ -450,9 +678,7 @@ function showPreview(found) {
     `${found.collection || "That link"} — ${parts.join(" · ")}`;
   $("preview-items").replaceChildren(...found.items.map((item) => {
     const li = document.createElement("li");
-    const b = document.createElement("b");
-    b.textContent = itemName(item);
-    li.append(b);
+    li.append(el("b", null, itemName(item)));
     if (item.duration) li.append(`  ${clock(item.duration)}`);
     return li;
   }));
@@ -471,31 +697,26 @@ function hidePreview() {
 // ---------------------------------------------------------------------------
 
 function renderPrograms(programs) {
-  const rows = Object.entries(programs).map(([key, entry]) => {
-    const row = document.createElement("div");
-    row.className = "prog";
-    const name = document.createElement("span");
-    name.className = "n";
-    name.textContent = key;
-    const detail = document.createElement("span");
+  state.programs = programs;
+  $("programs").replaceChildren(...Object.entries(programs).map(([key, entry]) => {
+    const row = el("div", "row");
+    row.append(el("span", "k", key));
+    const value = el("span", "v");
     if (entry.present) {
-      detail.className = "ok";
-      detail.textContent = `✓ ${entry.version || entry.path}`;
+      value.className = "v ok";
+      value.textContent = entry.version || entry.path;
     } else {
-      detail.className = "missing";
-      detail.textContent = entry.required
-        ? `✗ needed for ${entry.purpose} — ${entry.install}`
-        : `– optional, for ${entry.purpose} — ${entry.install}`;
+      value.className = "v no";
+      value.textContent = (entry.required ? "needed — " : "optional — ")
+        + entry.purpose + (entry.install ? `  ·  ${entry.install}` : "");
     }
-    row.append(name, detail);
+    row.append(value);
     return row;
-  });
-  $("programs").replaceChildren(...rows);
+  }));
+  renderChips();
 }
 
 function renderInstallOffer(installable) {
-  // The whole point: a missing program is a button, not a sentence telling
-  // somebody to go and read a README.
   const box = $("install-offer");
   if (!installable || !installable.missing?.length) { box.hidden = true; return; }
 
@@ -526,63 +747,60 @@ function renderInstallOffer(installable) {
 }
 
 async function renderCobalt() {
-  const state = await api("/api/cobalt");
-  const line = $("cobalt-state");
-  const bits = [];
-  bits.push(state.installed ? "installed" : "not installed");
-  if (state.running) bits.push(`running — cobalt ${state.version || ""}`.trim());
-  if (state.node) bits.push(`node ${state.node}`);
-  if (state.missing?.length) bits.push(`needs ${state.missing.join(", ")}`);
-  line.replaceChildren(
-    Object.assign(document.createElement("span"), {className: "n", textContent: "status"}),
-    Object.assign(document.createElement("span"),
-                  {className: state.running ? "ok" : "missing",
-                   textContent: bits.join(" · ")}));
+  const state_ = await api("/api/cobalt");
+  const rows = [
+    ["cobalt", state_.running
+      ? `running — cobalt ${state_.version || ""}`.trim()
+      : (state_.installed ? "installed, not running" : "not installed"),
+     state_.running],
+    ["tokens", state_.tokens?.running
+      ? `running${state_.tokens?.bridged ? " · bridged" : ""}`
+      : "not running", !!state_.tokens?.running],
+  ];
+  if (state_.node) rows.push(["node", state_.node, true]);
+  if (state_.missing?.length) rows.push(["missing", state_.missing.join(", "), false]);
 
-  const actions = $("cobalt-actions");
+  $("cobalt-state").replaceChildren(...rows.map(([key, value, good]) => {
+    const row = el("div", "row");
+    row.append(el("span", "k", key));
+    row.append(el("span", `v ${good ? "ok" : "no"}`, value));
+    return row;
+  }));
+
   const buttons = [];
-  if (!state.installed) {
-    buttons.push(["Install it", {action: "install"}]);
-  } else if (state.running) {
-    buttons.push(["Stop", {action: "stop"}], ["Update", {action: "install", update: true}]);
-  } else {
-    buttons.push(["Start", {action: "start"}], ["Update", {action: "install", update: true}]);
-  }
-  if (state.installed) buttons.push(["Remove", {action: "remove"}]);
+  if (!state_.installed) buttons.push(["Install it", { action: "install" }]);
+  else if (state_.running) buttons.push(["Stop", { action: "stop" }],
+                                        ["Update", { action: "install", update: true }]);
+  else buttons.push(["Start", { action: "start" }],
+                    ["Update", { action: "install", update: true }]);
+  if (state_.installed) buttons.push(["Remove", { action: "remove" }]);
 
-  actions.replaceChildren(...buttons.map(([label, body]) => {
+  $("cobalt-actions").replaceChildren(...buttons.map(([label, body]) => {
     const element = button(label, async () => {
       flash(`${label}… this can take a minute the first time.`, "info");
       const result = await api("/api/cobalt", body);
       flash(result.detail || "", result.ok ? "info" : "error");
       await renderCobalt();
     });
-    element.className = label === "Remove" ? "quiet" : "";
+    element.className = label === "Remove" ? "btn ghost small" : "btn small";
     return element;
   }));
 }
 
 async function renderSettings() {
   const settings = await api("/api/settings");
-  $("storage-note").textContent = `Kept in ${settings.storage}. Never printed, never sent anywhere but to the service it belongs to.`;
+  $("storage-note").textContent =
+    `Kept in ${settings.storage}. Never printed, and never sent anywhere but to `
+    + `the service it belongs to.`;
 
   $("services").replaceChildren(...settings.services.map((service) => {
-    const box = document.createElement("div");
-    box.className = "svc";
-
-    const heading = document.createElement("h2");
-    heading.style.margin = "0";
-    heading.textContent = `${service.complete ? "✓ " : ""}${service.label}`;
-    const why = document.createElement("p");
-    why.className = "why";
-    why.textContent = service.why;
-    box.append(heading, why);
+    const box = el("div", "svc");
+    box.append(el("h3", null, `${service.complete ? "✓ " : ""}${service.label}`));
+    box.append(el("p", "why", service.why));
 
     for (const field of service.fields) {
-      const row = document.createElement("div");
-      row.className = "field";
-      const label = document.createElement("label");
-      label.textContent = field.label;
+      const row = el("div", "cred");
+      row.append(el("label", null, field.label));
       const input = document.createElement("input");
       input.type = field.secret ? "password" : "text";
       input.placeholder = field.set ? field.hint : (field.placeholder || "not set");
@@ -594,14 +812,13 @@ async function renderSettings() {
         input.value = "";
         await renderSettings();
       });
-      save.className = "";
-      row.append(label, input, save);
+      save.className = "btn small";
+      row.append(input, save);
       box.append(row);
     }
 
     if (service.steps.length) {
-      const link = document.createElement("p");
-      link.className = "note";
+      const link = el("p", "hint");
       const anchor = document.createElement("a");
       anchor.href = service.url;
       anchor.target = "_blank";
@@ -609,11 +826,8 @@ async function renderSettings() {
       anchor.textContent = service.url;
       link.append("Where to find it — ", anchor);
       const steps = document.createElement("ol");
-      steps.replaceChildren(...service.steps.map((step) => {
-        const li = document.createElement("li");
-        li.textContent = step;
-        return li;
-      }));
+      steps.className = "steps";
+      steps.replaceChildren(...service.steps.map((step) => el("li", null, step)));
       box.append(link, steps);
     }
     return box;
@@ -621,15 +835,9 @@ async function renderSettings() {
 
   $("free").replaceChildren(...Object.entries(settings.no_setup_needed).map(
     ([name, sentence]) => {
-      const row = document.createElement("div");
-      row.className = "prog";
-      const label = document.createElement("span");
-      label.className = "n";
-      label.textContent = name;
-      const text = document.createElement("span");
-      text.className = "missing";
-      text.textContent = sentence;
-      row.append(label, text);
+      const row = el("div", "row");
+      row.append(el("span", "k", name));
+      row.append(el("span", "v no", sentence));
       return row;
     }));
 }
@@ -655,25 +863,32 @@ function pathFromDrop(event) {
 }
 
 function wireDrop() {
-  const zone = $("drop");
-  for (const name of ["dragenter", "dragover"]) {
-    zone.addEventListener(name, (event) => {
-      event.preventDefault();
-      zone.classList.add("over");
-    });
-  }
-  for (const name of ["dragleave", "drop"]) {
-    zone.addEventListener(name, () => zone.classList.remove("over"));
-  }
-  zone.addEventListener("drop", (event) => {
+  // The whole window is the target. A small dashed rectangle is a thing to
+  // aim at; a window is a thing to drop on.
+  let depth = 0;
+  const curtain = $("curtain");
+
+  addEventListener("dragenter", (event) => {
     event.preventDefault();
+    depth += 1;
+    curtain.classList.add("on");
+  });
+  addEventListener("dragover", (event) => event.preventDefault());
+  addEventListener("dragleave", () => {
+    depth = Math.max(0, depth - 1);
+    if (!depth) curtain.classList.remove("on");
+  });
+  addEventListener("drop", (event) => {
+    event.preventDefault();
+    depth = 0;
+    curtain.classList.remove("on");
     const path = pathFromDrop(event);
     if (path) {
       $("url").value = path;
       submit();
     } else {
-      flash("That drop carried no path. Paste the file's path instead — " +
-            "in Finder, ⌥⌘C copies it.");
+      flash("That drop carried no path. Paste the file's path instead — "
+            + "in Finder, ⌥⌘C copies it.");
     }
   });
 }
@@ -707,27 +922,19 @@ async function start() {
   state.jobs = initial.jobs;
   state.formats = initial.formats;
   state.output = initial.output;
+  state.format = initial.default_format;
+  state.kind = (initial.formats.find((f) => f.name === state.format) || {}).kind
+               || initial.formats[0]?.kind;
 
-  $("where").textContent = `Files go to ${initial.output}`;
+  const reveal = $("reveal-out");
+  reveal.textContent = initial.output;
+  reveal.addEventListener("click", () =>
+    api("/api/reveal", { path: initial.output }).catch(() => {}));
 
-  const picker = $("format");
-  picker.replaceChildren(...initial.formats.map((format) => {
-    const option = document.createElement("option");
-    option.value = format.name;
-    option.textContent = format.name;
-    option.dataset.summary = format.summary;
-    return option;
-  }));
-  picker.value = initial.default_format;
-  const describe = () => {
-    $("format-note").textContent =
-      picker.selectedOptions[0]?.dataset.summary || "";
-  };
-  picker.addEventListener("change", describe);
-  describe();
-
+  renderKinds();
   renderPrograms(initial.programs);
   renderInstallOffer(initial.installable);
+  renderChips();
   render();
   listen();
 }
@@ -743,7 +950,7 @@ $("preview-go").addEventListener("click", async () => {
   const go = $("preview-go");
   go.disabled = true;
   try {
-    await api("/api/add", { items: found.items, format: $("format").value });
+    await api("/api/add", { items: found.items, format: state.format });
     $("url").value = "";
     hidePreview();
   } catch (error) {
@@ -751,6 +958,7 @@ $("preview-go").addEventListener("click", async () => {
   }
   go.disabled = false;
 });
+$("forget").addEventListener("click", () => api("/api/forget", {}).catch(() => {}));
 $("install-all").addEventListener("click", async () => {
   const go = $("install-all");
   const log = $("install-log");
@@ -773,11 +981,10 @@ $("install-all").addEventListener("click", async () => {
   }
   go.disabled = false;
 });
-
-$("forget").addEventListener("click", () => api("/api/forget", {}).catch(() => {}));
-$("toggle-settings").addEventListener("click", async () => {
+$("toggle-settings").addEventListener("click", async (event) => {
   const panel = $("settings");
   panel.hidden = !panel.hidden;
+  event.currentTarget.setAttribute("aria-expanded", String(!panel.hidden));
   if (!panel.hidden) {
     try {
       await renderSettings();
