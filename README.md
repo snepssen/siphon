@@ -99,10 +99,10 @@ siphon get 'https://www.deezer.com/album/302127' --as m4a
 ```
 
 Tidal works the same way, but it is the only service here that cannot work
-without a key — there is no public way to read a Tidal playlist at all. A free
-developer app gives you one. Note that siphon has not been able to test the
-Tidal path against the real service, for exactly that reason; if it misreads
-something, that is where to look first.
+without a key — there is no public way to read a Tidal catalogue at all. A
+free developer app at developer.tidal.com gives you a client id and secret to
+paste into Settings. Tidal's covers come back at 1280px, the largest of the
+three.
 
 Deezer needs no key at all. Spotify works without one too, by reading the same
 embed its web player uses — but that path cannot see ISRCs and stops at fifty

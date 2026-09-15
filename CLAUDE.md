@@ -151,20 +151,48 @@ m4a and flac only. Adding opus to that set would silently drop the artwork
 rather than embed it. Relatedly, mp4 has no standard ISRC atom, so an m4a
 loses the ISRC that a flac or an mp3 keeps.
 
-**Tidal's request path is unverified, and that must stay written down until
-it is not.** Tidal is the only service here with no keyless way in: the v2 API
-answers `UNAUTHORIZED` to everything, there is no public embed JSON, and the
-share pages carry a title and nothing else. So nothing in `_album`,
-`_playlist` or `_bearer` has ever been run against the real service.
+**Tidal's album and track paths are verified; the playlist path is not.**
+Albums, single tracks, auth, pagination shape and artwork have all been run
+against the real service. `_playlist` has not — listing playlists needs a
+filter and there was no real playlist id to hand, so it is written to the same
+conventions as `_album` and remains unproven. Verifying it needs nothing more
+than one real Tidal playlist link.
 
-What *is* confirmed, from a captured `GET /v2/albums/{id}` response: the base
-URL, the `Accept: application/vnd.api+json` header, the `countryCode`
-parameter, and the album attribute names — `title`, `releaseDate`,
-`imageLinks` with `meta.width`, `tidalUrl`, and durations as ISO 8601 strings.
-What is *inferred* is the track attribute spelling (`isrc`, `trackNumber`,
-`volumeNumber`) and the cursor pagination parameter. The first thing to do
-with a real key is check those against an actual response, then delete this
-paragraph.
+**What guessing the schema got wrong**, kept here because it is what the
+inference-versus-capture distinction actually costs. Four of the field names
+this module used before a key existed were invented: there is no `imageLinks`
+and no `tidalUrl`, and `trackNumber`/`volumeNumber` are not track attributes
+at all. What is real:
+
+  * **A track's position is in the meta of the reference to it.** An album's
+    `relationships.items.data` entries look like `{"id": …, "type": "tracks",
+    "meta": {"volumeNumber": 1, "trackNumber": 1, "itemCursor": …}}`, and that
+    meta is the only place the ordering exists. `_linked` returns
+    `(resource, meta)` pairs for exactly this reason; `_related` drops the
+    meta and is only for relationships that have none worth keeping. Use the
+    wrong one on `items` and every album comes out unnumbered.
+  * **Cover art is a relationship, not a field.** `coverArt` → an `artworks`
+    resource → `files`, the same image at seven sizes from 80px to 1280px,
+    each with `meta.width`. `artwork_url` follows that and takes the largest.
+  * **The web address is `externalLinks[].href`**, not `tidalUrl`.
+  * **A nested include must name the relationship it wants.** `include=albums`
+    on a track gets the album without its artwork; `include=albums.coverArt`
+    is what actually produces a cover. This is silent — the track simply comes
+    out with no picture.
+  * **`title` and `version` are separate.** Tidal stores "Aerodynamic" and
+    "Remastered" apart; everywhere else calls that one name, so `_track`
+    joins them.
+
+The test fixture in `tests/test_tidal.py` is cut from a real response and
+every field name in it is one the service actually sent. Keep it that way: the
+earlier fixture agreed with the code rather than the API, which is a test that
+proves nothing.
+
+**`net.get_json` must forward `data`.** It did not, and because the Spotify
+embed path needs no token, nothing noticed: both credentialled paths were
+broken with a `TypeError` that only appeared the first time anybody actually
+had keys. Any helper with a happy path that is never exercised is a helper
+that is quietly wrong.
 
 **Do not call `/v2/trackManifests/{id}`.** It returns a real playback manifest
 — the audio itself, DRM-protected. It is the one endpoint that would turn this
@@ -220,10 +248,10 @@ cannot yet handle should be a new module in `engines/` and one line in
 - **Phase 2, done.** The `127.0.0.1` window: live queue over server-sent
   events, playlist preview before committing, settings page generated from
   `credentials.status()`, drag-and-drop.
-- **Phase 3, done bar one thing.** Deezer and Spotify verified end to end,
-  `resolve.py`, artwork embedding, and the confirmation step for uncertain
-  matches in both the terminal and the window. Tidal is written but **its
-  catalogue path has never run** — see below.
+- **Phase 3, done.** Deezer, Spotify and Tidal, `resolve.py`, artwork
+  embedding, and the confirmation step for uncertain matches in both the
+  terminal and the window. The one gap is Tidal's playlist path, which needs a
+  real playlist link to verify.
 - **Phase 4.** Breadth: ImageMagick, pandoc and Ghostscript engines; a
   self-hosted cobalt instance as a second fetch backend.
 - **Phase 4.** Breadth. ImageMagick, pandoc and Ghostscript engines; a

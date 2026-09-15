@@ -22,9 +22,14 @@ TIMEOUT = 20
 RETRIES = 3
 
 
-def get_json(url, headers=None, timeout=TIMEOUT, retries=RETRIES):
-    """A JSON body, or a sentence about why not."""
-    body = get_bytes(url, headers=headers, timeout=timeout, retries=retries)
+def get_json(url, headers=None, timeout=TIMEOUT, retries=RETRIES, data=None):
+    """A JSON body, or a sentence about why not.
+
+    `data` makes it a POST, which is how both token endpoints here are asked
+    for a client-credentials grant.
+    """
+    body = get_bytes(url, headers=headers, timeout=timeout, retries=retries,
+                     data=data)
     try:
         return json.loads(body)
     except ValueError as error:

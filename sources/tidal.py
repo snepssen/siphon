@@ -18,10 +18,17 @@ has `attributes` and `relationships`, and related resources arrive alongside
 in `included` rather than nested. `_index` and `_related` below do that
 joining once so the rest reads normally.
 
-Two things that catch people out, both confirmed against a real response:
-durations are ISO 8601 strings — `PT1H2M11S`, not a number of seconds — and
-every catalogue request needs a `countryCode`, because Tidal's catalogue
-genuinely differs by territory.
+Four things that catch people out, all confirmed against real responses:
+
+  * durations are ISO 8601 strings — `PT5M20S`, not a number of seconds;
+  * every request needs a `countryCode`, because the catalogue really does
+    differ by territory;
+  * **a track's position is not on the track.** `trackNumber` and
+    `volumeNumber` live in the `meta` of the album's *reference* to it, which
+    is the only place the ordering exists — the track resource itself has no
+    idea where it sits;
+  * cover art is not an attribute either. It is a `coverArt` relationship to
+    an `artworks` resource, whose `files` are the same image at seven sizes.
 """
 
 import locale
@@ -61,8 +68,19 @@ def expand(url, limit=None, **_options):
     country = _country()
 
     if kind == "track":
-        payload = _get(f"tracks/{identifier}", countryCode=country)
-        return [_track(_resource(payload), _index(payload))]
+        # albums.coverArt, not albums: a nested include has to name the
+        # relationship you actually want, or the album arrives without its
+        # artwork and the track quietly gets no cover.
+        payload = _get(f"tracks/{identifier}", countryCode=country,
+                       include="artists,albums.coverArt")
+        resource = _resource(payload)
+        index = _index(payload)
+        item = _track(resource, index)
+        albums = _related(resource, "albums", index)
+        if albums:
+            item.album = _attributes(albums[0]).get("title")
+            item.artwork_url = item.artwork_url or artwork_url(albums[0], index)
+        return [item]
     if kind == "album":
         return _album(identifier, country, limit=limit)
     if kind == "playlist":
@@ -228,8 +246,14 @@ def _index(payload):
     return index
 
 
-def _related(resource, name, index):
-    """The resources on the far side of one relationship, in order."""
+def _linked(resource, name, index):
+    """`(resource, meta)` for each entry on the far side of a relationship.
+
+    The meta is the half that is easy to throw away and impossible to do
+    without: an album's reference to a track carries `trackNumber` and
+    `volumeNumber`, and they exist nowhere else. Drop them and every album
+    comes out unnumbered, in whatever order the list happened to arrive.
+    """
     relationship = ((resource or {}).get("relationships") or {}).get(name) or {}
     data = relationship.get("data")
     if isinstance(data, dict):
@@ -238,8 +262,13 @@ def _related(resource, name, index):
     for reference in data or []:
         entry = index.get((reference.get("type"), str(reference.get("id"))))
         if entry:
-            found.append(entry)
+            found.append((entry, reference.get("meta") or {}))
     return found
+
+
+def _related(resource, name, index):
+    """Just the resources, for the relationships that carry no useful meta."""
+    return [entry for entry, _ in _linked(resource, name, index)]
 
 
 def _attributes(resource):
@@ -282,52 +311,81 @@ def seconds(value):
     return total or None
 
 
-def _image(attributes):
-    """The largest of the `imageLinks` a resource carries."""
-    links = attributes.get("imageLinks") or attributes.get("imageLink") or []
-    if isinstance(links, dict):
-        links = [links]
-    best, width = None, -1
-    for link in links:
-        if not isinstance(link, dict):
-            continue
-        meta = link.get("meta") or {}
-        size = meta.get("width") or link.get("width") or 0
-        if link.get("href") or link.get("url"):
-            if size >= width:
-                best, width = link.get("href") or link.get("url"), size
-    return best
+def artwork_url(resource, index):
+    """The largest cover image, followed through the `coverArt` relationship.
+
+    An `artworks` resource carries the same picture at seven sizes, 80px up to
+    1280px, each with its dimensions in `meta`. Take the biggest: it is going
+    into a file that may outlive several screens.
+    """
+    for art, _ in _linked(resource, "coverArt", index):
+        files = _attributes(art).get("files") or []
+        best, width = None, -1
+        for entry in files:
+            if not isinstance(entry, dict) or not entry.get("href"):
+                continue
+            size = (entry.get("meta") or {}).get("width") or 0
+            if size > width:
+                best, width = entry["href"], size
+        if best:
+            return best
+    return None
+
+
+def external_url(attributes):
+    """The tidal.com address for a resource, out of `externalLinks`."""
+    for link in attributes.get("externalLinks") or []:
+        if isinstance(link, dict) and link.get("href"):
+            return link["href"]
+    return None
 
 
 # ---------------------------------------------------------------------------
 # Building items
 # ---------------------------------------------------------------------------
 
-def _track(resource, index, album=None, cover=None, position=None):
+def _track(resource, index, album=None, cover=None, position=None, meta=None):
+    """One track resource into a catalogue Item.
+
+    `meta` is the album or playlist's reference metadata — where the track
+    number actually lives. `position` is the fallback for a listing that has
+    none, which is what a playlist is.
+    """
     attributes = _attributes(resource)
-    artists = [_attributes(a).get("name") for a in _related(resource, "artists", index)]
+    meta = meta or {}
+    artists = [_attributes(a).get("name")
+               for a in _related(resource, "artists", index)]
     artists = [name for name in artists if name]
+
+    title = attributes.get("title")
+    version = attributes.get("version")
+    if version:
+        # "Harder, Better, Faster, Stronger" + "Remastered" is two fields on
+        # Tidal and one name everywhere else.
+        title = f"{title} ({version})"
 
     return Item(
         origin="tidal",
         url=None,                 # catalogue only; resolve finds the audio
         kind="audio",
-        title=attributes.get("title"),
+        title=title,
         artist=", ".join(artists) if artists else None,
         album=album,
         isrc=attributes.get("isrc"),
         duration=seconds(attributes.get("duration")),
-        track_number=attributes.get("trackNumber") or position,
-        disc_number=attributes.get("volumeNumber"),
-        artwork_url=_image(attributes) or cover,
-        webpage_url=attributes.get("tidalUrl"),
-        extra={"tidal_id": resource.get("id"), "explicit": attributes.get("explicit")},
+        track_number=meta.get("trackNumber") or position,
+        disc_number=meta.get("volumeNumber"),
+        artwork_url=artwork_url(resource, index) or cover,
+        webpage_url=external_url(attributes),
+        extra={"tidal_id": resource.get("id"),
+               "explicit": attributes.get("explicit"),
+               "cursor": meta.get("itemCursor")},
     )
 
 
 def _album(identifier, country, limit=None):
     payload = _get(f"albums/{identifier}", countryCode=country,
-                   include="items,items.artists,artists,coverArt")
+                   include="items.artists,artists,coverArt")
     album = _resource(payload)
     index = _index(payload)
     attributes = _attributes(album)
@@ -335,25 +393,27 @@ def _album(identifier, country, limit=None):
     title = attributes.get("title")
     artists = [_attributes(a).get("name") for a in _related(album, "artists", index)]
     artist = ", ".join(n for n in artists if n) or None
-    cover = _image(attributes) or _cover_from(album, index)
+    cover = artwork_url(album, index)
     year = _year(attributes.get("releaseDate"))
 
-    tracks = _related(album, "items", index)
-    tracks += _page(f"albums/{identifier}/relationships/items", country, index,
-                    have=len(tracks), limit=limit)
+    tracks = _linked(album, "items", index)
+    if len(tracks) < (attributes.get("numberOfItems") or 0):
+        tracks += _page(f"albums/{identifier}/relationships/items", country,
+                        index, have=len(tracks), limit=limit)
     if not tracks:
         raise SourceError(f"“{title}” came back with no tracks siphon can read.")
     if limit:
         tracks = tracks[: int(limit)]
 
     items = []
-    for position, resource in enumerate(tracks, start=1):
-        item = _track(resource, index, album=title, cover=cover, position=position)
+    for position, (resource, meta) in enumerate(tracks, start=1):
+        item = _track(resource, index, album=title, cover=cover,
+                      position=position, meta=meta)
         item.album_artist = artist
         item.year = item.year or year
         item.track_total = len(tracks)
         item.collection = f"{artist} — {title}" if artist else title
-        item.collection_index = position
+        item.collection_index = item.track_number or position
         item.extra["collection_size"] = len(tracks)
         items.append(item)
     return items
@@ -366,17 +426,18 @@ def _playlist(identifier, country, limit=None):
     index = _index(payload)
     title = _attributes(playlist).get("name") or _attributes(playlist).get("title")
 
-    tracks = _related(playlist, "items", index)
-    tracks += _page(f"playlists/{identifier}/relationships/items", country, index,
-                    have=len(tracks), limit=limit)
+    tracks = _linked(playlist, "items", index)
+    tracks += _page(f"playlists/{identifier}/relationships/items", country,
+                    index, have=len(tracks), limit=limit)
     if not tracks:
         raise SourceError(f"“{title}” came back with no tracks siphon can read.")
     if limit:
         tracks = tracks[: int(limit)]
 
     items = []
-    for position, resource in enumerate(tracks, start=1):
-        item = _track(resource, index, position=None)
+    for position, (resource, meta) in enumerate(tracks, start=1):
+        item = _track(resource, index, position=None, meta={})
+        item.artwork_url = item.artwork_url or artwork_url(playlist, index)
         item.collection = title
         item.collection_index = position
         item.extra["collection_size"] = len(tracks)
@@ -391,7 +452,7 @@ def _page(path, country, index, have=0, limit=None, cap=60):
     for _ in range(cap):
         if limit and have + len(gathered) >= int(limit):
             break
-        params = {"countryCode": country, "include": "items,items.artists"}
+        params = {"countryCode": country, "include": "items.artists"}
         if cursor:
             params["page[cursor]"] = cursor
         try:
@@ -403,10 +464,11 @@ def _page(path, country, index, have=0, limit=None, cap=60):
         if not isinstance(data, list) or not data:
             break
         for reference in data:
-            entry = index.get((reference.get("type"), str(reference.get("id")))) \
-                or (reference if reference.get("attributes") else None)
+            entry = index.get((reference.get("type"), str(reference.get("id"))))
+            if entry is None and reference.get("attributes"):
+                entry = reference
             if entry:
-                gathered.append(entry)
+                gathered.append((entry, reference.get("meta") or {}))
         cursor = _next_cursor(payload)
         if not cursor:
             break
@@ -420,14 +482,6 @@ def _next_cursor(payload):
     query = urllib.parse.parse_qs(urllib.parse.urlparse(nxt).query)
     values = query.get("page[cursor]") or query.get("cursor")
     return values[0] if values else None
-
-
-def _cover_from(resource, index):
-    for art in _related(resource, "coverArt", index):
-        found = _image(_attributes(art))
-        if found:
-            return found
-    return None
 
 
 def _year(date):

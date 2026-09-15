@@ -5,11 +5,17 @@ does not: parsing its links, the refusal when no key is set, ISO 8601
 durations, and the JSON:API join — `data` plus a flat `included` sidecar,
 which is the part most likely to be got subtly wrong.
 
-The fixture below is modelled on a genuine `GET /v2/albums/{id}` response:
-attribute names, the `PT1H2M11S` duration format, `imageLinks` carrying `meta`
-sizes, and relationships that reference `included` by (type, id) rather than
-nesting. Track attributes are siphon's best reading rather than a confirmed
-capture — see the note in CLAUDE.md.
+The fixture below is cut down from a genuine
+`GET /v2/albums/1550545?include=items.artists,artists,coverArt` response, and
+every field name in it is one the real service sent. That matters more than it
+sounds: an earlier version of this file invented `imageLinks` and put
+`trackNumber` in a track's attributes, and both were wrong. A fixture that
+agrees with the code instead of the service tests nothing at all.
+
+The two shapes worth knowing, because neither is where you would look first:
+a track's position lives in the **meta of the album's reference to it**, not
+on the track; and cover art is a `coverArt` relationship to an `artworks`
+resource holding the same image at seven sizes.
 """
 
 import sys
@@ -23,35 +29,60 @@ from sources import SourceError    # noqa: E402
 
 ALBUM = {
     "data": {
-        "id": "350860190",
+        "id": "1550545",
         "type": "albums",
         "attributes": {
-            "title": "Renaissance",
-            "duration": "PT1H2M11S",
-            "releaseDate": "2022-07-29",
+            "title": "Discovery",
+            "barcodeId": "0724384960650",
+            "numberOfVolumes": 1,
             "numberOfItems": 2,
-            "imageLinks": [
-                {"href": "https://img/small.jpg", "meta": {"width": 160}},
-                {"href": "https://img/big.jpg", "meta": {"width": 1280}},
+            "duration": "PT1H1M9S",
+            "explicit": False,
+            "releaseDate": "2001-03-12",
+            "externalLinks": [
+                {"href": "https://tidal.com/browse/album/1550545",
+                 "meta": {"type": "TIDAL_SHARING"}},
             ],
-            "tidalUrl": "https://tidal.com/browse/album/350860190",
         },
         "relationships": {
-            "artists": {"data": [{"type": "artists", "id": "1566"}]},
-            "items": {"data": [{"type": "tracks", "id": "t1"},
-                               {"type": "tracks", "id": "t2"}]},
+            "artists": {"data": [{"id": "8847", "type": "artists"}]},
+            "coverArt": {"data": [{"id": "AmX9grPBhCq4a8UZmFB",
+                                   "type": "artworks"}]},
+            # The position of each track lives here, in the meta of the
+            # reference — not on the track resource, which has no idea where
+            # it sits.
+            "items": {"data": [
+                {"id": "1550546", "type": "tracks",
+                 "meta": {"volumeNumber": 1, "trackNumber": 1,
+                          "itemCursor": "4DvnLdb7Pr8"}},
+                {"id": "1550547", "type": "tracks",
+                 "meta": {"volumeNumber": 1, "trackNumber": 2,
+                          "itemCursor": "9QrtKmc2Xz1"}},
+            ]},
         },
     },
     "included": [
-        {"type": "artists", "id": "1566", "attributes": {"name": "Beyoncé"}},
-        {"type": "tracks", "id": "t1", "attributes": {
-            "title": "I'M THAT GIRL", "duration": "PT3M28S",
-            "isrc": "USSM12204636", "trackNumber": 1, "volumeNumber": 1},
-         "relationships": {"artists": {"data": [{"type": "artists", "id": "1566"}]}}},
-        {"type": "tracks", "id": "t2", "attributes": {
-            "title": "COZY", "duration": "PT3M30S",
-            "isrc": "USSM12204637", "trackNumber": 2, "volumeNumber": 1},
-         "relationships": {"artists": {"data": [{"type": "artists", "id": "1566"}]}}},
+        {"id": "8847", "type": "artists", "attributes": {"name": "Daft Punk"}},
+        {"id": "AmX9grPBhCq4a8UZmFB", "type": "artworks", "attributes": {
+            "mediaType": "IMAGE",
+            "files": [
+                {"href": "https://resources.tidal.com/…/80x80.jpg",
+                 "meta": {"width": 80, "height": 80}},
+                {"href": "https://resources.tidal.com/…/1280x1280.jpg",
+                 "meta": {"width": 1280, "height": 1280}},
+                {"href": "https://resources.tidal.com/…/640x640.jpg",
+                 "meta": {"width": 640, "height": 640}},
+            ]}},
+        {"id": "1550546", "type": "tracks", "attributes": {
+            "title": "One More Time", "version": None, "isrc": "GBDUW0000053",
+            "duration": "PT5M20S", "explicit": False,
+            "externalLinks": [{"href": "https://tidal.com/browse/track/1550546",
+                               "meta": {"type": "TIDAL_SHARING"}}]},
+         "relationships": {"artists": {"data": [{"id": "8847", "type": "artists"}]}}},
+        {"id": "1550547", "type": "tracks", "attributes": {
+            "title": "Aerodynamic", "version": "Remastered",
+            "isrc": "GBDUW0000057", "duration": "PT3M32S", "explicit": False},
+         "relationships": {"artists": {"data": [{"id": "8847", "type": "artists"}]}}},
     ],
 }
 
@@ -103,35 +134,58 @@ class TheJsonApiJoin(unittest.TestCase):
 
     def test_related_resources_are_found_by_type_and_id(self):
         artists = tidal._related(self.album, "artists", self.index)
-        self.assertEqual([tidal._attributes(a)["name"] for a in artists], ["Beyoncé"])
+        self.assertEqual([tidal._attributes(a)["name"] for a in artists],
+                         ["Daft Punk"])
 
     def test_relationship_order_is_preserved(self):
         tracks = tidal._related(self.album, "items", self.index)
         self.assertEqual([tidal._attributes(t)["title"] for t in tracks],
-                         ["I'M THAT GIRL", "COZY"])
+                         ["One More Time", "Aerodynamic"])
+
+    def test_the_reference_meta_survives_the_join(self):
+        """Lose this and every album comes out unnumbered."""
+        linked = tidal._linked(self.album, "items", self.index)
+        self.assertEqual([meta.get("trackNumber") for _, meta in linked], [1, 2])
+        self.assertEqual([meta.get("volumeNumber") for _, meta in linked], [1, 1])
 
     def test_a_dangling_reference_is_skipped_not_fatal(self):
         album = dict(self.album)
         album["relationships"] = {"items": {"data": [
-            {"type": "tracks", "id": "t1"},
-            {"type": "tracks", "id": "missing"},
+            {"type": "tracks", "id": "1550546", "meta": {"trackNumber": 1}},
+            {"type": "tracks", "id": "does-not-exist", "meta": {"trackNumber": 2}},
         ]}}
         self.assertEqual(len(tidal._related(album, "items", self.index)), 1)
 
-    def test_the_largest_image_wins(self):
-        self.assertEqual(tidal._image(tidal._attributes(self.album)),
-                         "https://img/big.jpg")
+    def test_cover_art_is_followed_and_the_largest_size_taken(self):
+        """Seven sizes of the same picture; the file may outlive the screen."""
+        self.assertEqual(tidal.artwork_url(self.album, self.index),
+                         "https://resources.tidal.com/…/1280x1280.jpg")
+
+    def test_the_web_address_comes_from_external_links(self):
+        attributes = tidal._attributes(self.album)
+        self.assertEqual(tidal.external_url(attributes),
+                         "https://tidal.com/browse/album/1550545")
+        self.assertIsNone(tidal.external_url({}))
 
     def test_a_track_becomes_a_catalogue_item_with_no_url(self):
-        track = tidal._related(self.album, "items", self.index)[0]
-        item = tidal._track(track, self.index, album="Renaissance")
-        self.assertEqual(item.title, "I'M THAT GIRL")
-        self.assertEqual(item.artist, "Beyoncé")
-        self.assertEqual(item.isrc, "USSM12204636")
-        self.assertEqual(item.duration, 208)
+        track, meta = tidal._linked(self.album, "items", self.index)[0]
+        item = tidal._track(track, self.index, album="Discovery", meta=meta)
+        self.assertEqual(item.title, "One More Time")
+        self.assertEqual(item.artist, "Daft Punk")
+        self.assertEqual(item.isrc, "GBDUW0000053")
+        self.assertEqual(item.duration, 320)
         self.assertEqual(item.track_number, 1)
+        self.assertEqual(item.disc_number, 1)
+        self.assertEqual(item.webpage_url,
+                         "https://tidal.com/browse/track/1550546")
         self.assertIsNone(item.url, "a catalogue item must not claim to be fetchable")
         self.assertFalse(item.fetchable)
+
+    def test_a_version_is_folded_into_the_title(self):
+        """Tidal splits "Aerodynamic" and "Remastered"; everywhere else joins them."""
+        track, meta = tidal._linked(self.album, "items", self.index)[1]
+        item = tidal._track(track, self.index, meta=meta)
+        self.assertEqual(item.title, "Aerodynamic (Remastered)")
 
 
 class WorkingOutTheCountry(unittest.TestCase):
@@ -155,12 +209,26 @@ class WorkingOutTheCountry(unittest.TestCase):
 
 
 class WithoutAKey(unittest.TestCase):
-    def test_the_refusal_says_where_to_get_one(self):
+    """The refusal is tested with the keys stubbed away, not skipped.
+
+    This used to skip itself on any machine that had Tidal keys set — which is
+    every machine where the feature works, so the check quietly stopped
+    running exactly where it mattered. Stubbing the lookup tests the same
+    thing everywhere, and never touches the real keychain.
+    """
+
+    def setUp(self):
         import credentials
-        if credentials.get("tidal", "client_id"):
-            self.skipTest("this machine has Tidal keys set")
+        self.credentials = credentials
+        self.original = credentials.get
+        credentials.get = lambda service, key: None
+
+    def tearDown(self):
+        self.credentials.get = self.original
+
+    def test_the_refusal_says_where_to_get_one(self):
         with self.assertRaises(SourceError) as caught:
-            tidal.expand("https://tidal.com/browse/album/350860190")
+            tidal.expand("https://tidal.com/browse/album/1550545")
         message = str(caught.exception)
         self.assertIn("developer.tidal.com", message)
         self.assertIn("client id", message.lower())
