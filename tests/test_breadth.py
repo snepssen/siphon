@@ -192,6 +192,110 @@ class Pdfs(unittest.TestCase):
         self.assertEqual(ghostscript._pages(self.pdf), 3)
 
 
+HAVE_SOFFICE = shutil.which("soffice") is not None
+
+
+class LayoutGoesToLibreOfficeMeaningGoesToPandoc(unittest.TestCase):
+    """Two engines can open a .docx, and which one should is not arbitrary.
+
+    pandoc reads a document into its own representation, which is what makes
+    markdown-to-Word possible and exact layout impossible. LibreOffice opens
+    the file the way its own application would. So a Word file to PDF — where
+    looking the same is the entire point of asking — is LibreOffice's, and a
+    Word file to markdown is pandoc's.
+    """
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.md = self.dir / "note.md"
+        self.md.write_text("# Title\n\nSome *text*.\n")
+        self.csv = self.dir / "data.csv"
+        self.csv.write_text("name,count\nalpha,10\nbeta,20\n")
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    @unittest.skipUnless(HAVE_SOFFICE and HAVE_PANDOC, "needs both engines")
+    def test_office_to_pdf_goes_to_libreoffice(self):
+        docx = self.dir / "report.docx"
+        subprocess.run(["pandoc", str(self.md), "-o", str(docx)], check=True)
+        engine = engines.choose(docx, "pdf", kind="document")
+        self.assertEqual(engine.__name__, "engines.libreoffice")
+
+    @unittest.skipUnless(HAVE_SOFFICE and HAVE_PANDOC, "needs both engines")
+    def test_office_to_markup_goes_to_pandoc(self):
+        docx = self.dir / "report.docx"
+        subprocess.run(["pandoc", str(self.md), "-o", str(docx)], check=True)
+        for fmt in ("md", "html", "txt"):
+            with self.subTest(fmt=fmt):
+                engine = engines.choose(docx, fmt, kind="document")
+                self.assertEqual(engine.__name__, "engines.pandoc", fmt)
+
+    @unittest.skipUnless(HAVE_PANDOC, "needs pandoc")
+    def test_markup_sources_stay_with_pandoc(self):
+        """LibreOffice cannot read markdown at all."""
+        from engines import libreoffice
+        self.assertFalse(libreoffice.can(self.md, "pdf"))
+        self.assertFalse(libreoffice.can(self.md, "docx"))
+
+    @unittest.skipUnless(HAVE_SOFFICE, "needs LibreOffice")
+    def test_spreadsheets_are_only_offered_spreadsheet_shaped_targets(self):
+        from engines import libreoffice
+        self.assertTrue(libreoffice.can(self.csv, "xlsx"))
+        self.assertTrue(libreoffice.can(self.csv, "pdf"))
+        self.assertFalse(libreoffice.can(self.csv, "pptx"),
+                         "a spreadsheet as slides is a file nobody wanted")
+
+    @unittest.skipUnless(HAVE_SOFFICE, "needs LibreOffice")
+    def test_a_spreadsheet_really_converts(self):
+        from engines import libreoffice
+        plan = libreoffice.plan(self.csv, "xlsx")
+        out = libreoffice.run(plan, self.csv, self.dir / "out.xlsx")
+        self.assertGreater(os.path.getsize(out), 0)
+        with open(out, "rb") as handle:
+            self.assertEqual(handle.read(2), b"PK", "not a real xlsx")
+
+    @unittest.skipUnless(HAVE_SOFFICE, "needs LibreOffice")
+    def test_each_run_gets_its_own_profile(self):
+        """soffice shares one profile by default, and a second instance using
+        it attaches to the first or refuses to start — which makes converting
+        a folder in parallel fail for reasons that look nothing like this."""
+        from engines import libreoffice
+        import inspect
+        source = inspect.getsource(libreoffice.run)
+        self.assertIn("UserInstallation", source)
+
+    @unittest.skipUnless(HAVE_SOFFICE, "needs LibreOffice")
+    def test_a_pdf_says_it_keeps_the_original_layout(self):
+        from engines import libreoffice
+        plan = libreoffice.plan(self.csv, "pdf")
+        self.assertTrue(any("laid out" in line for line in plan.detail))
+
+
+class PdfsFromDocuments(unittest.TestCase):
+    @unittest.skipUnless(HAVE_PANDOC, "needs pandoc")
+    def test_markdown_to_pdf_needs_a_typesetter_and_names_one(self):
+        from engines import pandoc
+        directory = Path(tempfile.mkdtemp())
+        try:
+            source = directory / "note.md"
+            source.write_text("# Title\n\ntext\n")
+            if pandoc._pdf_engine() is None:
+                with self.assertRaises(ConversionErrorType) as caught:
+                    pandoc.plan(source, "pdf")
+                self.assertIn("tectonic", str(caught.exception))
+            else:
+                plan = pandoc.plan(source, "pdf")
+                out = pandoc.run(plan, source, directory / "out.pdf")
+                with open(out, "rb") as handle:
+                    self.assertEqual(handle.read(5), b"%PDF-")
+        finally:
+            shutil.rmtree(directory, ignore_errors=True)
+
+
+from engines import ConversionError as ConversionErrorType  # noqa: E402
+
+
 class CobaltAnswers(unittest.TestCase):
     """Fixtures only — the request path has never met a real instance."""
 

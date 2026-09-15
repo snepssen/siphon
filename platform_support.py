@@ -116,6 +116,15 @@ PROGRAMS = {
                   "dnf": "libreoffice", "pacman": "libreoffice",
                   "winget": "TheDocumentFoundation.LibreOffice"},
     ),
+    "tectonic": Program(
+        key="tectonic",
+        binaries=("tectonic",),
+        purpose="typesetting a PDF from a document — pandoc writes them but "
+                "ships no typesetter",
+        required=False,
+        packages={"brew": "tectonic", "apt": "tectonic", "dnf": "tectonic",
+                  "pacman": "tectonic", "winget": "TectonicProject.Tectonic"},
+    ),
     "node": Program(
         key="node",
         binaries=("node",),

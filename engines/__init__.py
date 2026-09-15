@@ -15,9 +15,10 @@ import importlib
 
 # Specific first, general last — the same rule the source registry uses.
 # ImageMagick gets first refusal on images because it reaches formats ffmpeg
-# cannot; Ghostscript claims PDFs; pandoc claims documents; ffmpeg takes
-# everything else, and the images ImageMagick is not here for.
-ORDER = ("imagemagick", "ghostscript", "pandoc", "ffmpeg")
+# cannot; Ghostscript claims PDFs; LibreOffice claims office files, where the
+# question is layout; pandoc claims markup, where the question is meaning;
+# ffmpeg takes everything else, and the images ImageMagick is not here for.
+ORDER = ("imagemagick", "ghostscript", "libreoffice", "pandoc", "ffmpeg")
 
 _loaded = {}
 

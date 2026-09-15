@@ -23,8 +23,10 @@ MEDIA_SUFFIXES = {
     # still image
     ".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".bmp", ".heic",
     ".heif", ".avif", ".svg",
-    # documents
-    ".pdf", ".epub", ".mobi", ".docx", ".odt", ".md", ".html", ".rtf", ".txt",
+    # documents, spreadsheets and presentations
+    ".pdf", ".epub", ".mobi", ".md", ".html", ".htm", ".rtf", ".txt", ".tex",
+    ".doc", ".docx", ".odt", ".xls", ".xlsx", ".ods", ".csv", ".tsv",
+    ".ppt", ".pptx", ".odp",
 }
 
 AUDIO_SUFFIXES = {
@@ -36,7 +38,9 @@ IMAGE_SUFFIXES = {
     ".heif", ".avif", ".svg",
 }
 DOCUMENT_SUFFIXES = {
-    ".pdf", ".epub", ".mobi", ".docx", ".odt", ".md", ".html", ".rtf", ".txt",
+    ".pdf", ".epub", ".mobi", ".md", ".html", ".htm", ".rtf", ".txt", ".tex",
+    ".doc", ".docx", ".odt", ".xls", ".xlsx", ".ods", ".csv", ".tsv",
+    ".ppt", ".pptx", ".odp",
 }
 
 

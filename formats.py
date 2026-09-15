@@ -215,6 +215,27 @@ PRESETS.update({
         name="rtf", kind=DOCUMENT, container="rtf",
         summary="Rich text — opens in anything, keeps basic formatting",
     ),
+    "odt": Target(
+        name="odt", kind=DOCUMENT, container="odt",
+        summary="OpenDocument text — the open format Word can also read",
+    ),
+    "xlsx": Target(
+        name="xlsx", kind=DOCUMENT, container="xlsx",
+        summary="Excel — for spreadsheets, from any spreadsheet",
+    ),
+    "ods": Target(
+        name="ods", kind=DOCUMENT, container="ods",
+        summary="OpenDocument spreadsheet",
+    ),
+    "csv": Target(
+        name="csv", kind=DOCUMENT, container="csv",
+        summary="Comma-separated values — the first sheet only, since CSV "
+                "holds one table",
+    ),
+    "pptx": Target(
+        name="pptx", kind=DOCUMENT, container="pptx",
+        summary="PowerPoint — for slides",
+    ),
 })
 
 DEFAULT_PRESET = "video"
@@ -231,6 +252,8 @@ def resolve(name):
         "best": "video", "original": "video", "source": "video",
         "jpeg": "jpg", "tif": "tiff", "htm": "html", "markdown": "md",
         "text": "txt", "word": "docx", "ebook": "epub", "image": "jpg",
+        "excel": "xlsx", "spreadsheet": "xlsx", "slides": "pptx",
+        "powerpoint": "pptx", "opendocument": "odt",
         "web": "web-image",
         "1080p": "mp4-1080", "720p": "mp4-720", "1080": "mp4-1080",
         "720": "mp4-720", "m4b": "m4a", "aac": "m4a", "mpeg4": "mp4",
