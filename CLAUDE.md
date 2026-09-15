@@ -459,6 +459,39 @@ cannot yet handle should be a new module in `engines/` and one line in
   thing.
 - **cobalt's YouTube** — blocked upstream, see above. Nothing to do but wait.
 
+## The project page is generated
+
+`docs/index.html` is built, not written. **Do not edit it** — the next build
+discards the edit, and `release.sh` refuses to package a page that has drifted
+from its catalogue.
+
+```sh
+python3 docs/build.py          # writes docs/index.html
+python3 docs/build.py --check  # fails if it is out of date
+```
+
+Two files feed it:
+
+  * **`docs/page.py`** — this project's content. Adding a section is one dict
+    in `sections`; the jump navigation is *derived* from those sections, so a
+    new one cannot be left out of the nav. That is the commonest way a page of
+    this shape goes stale.
+  * **`docs/ecosystem.json`** — the projects in the rail and the grid, shared
+    byte-identically across every repo exactly as `ecosystem.css` and
+    `ecosystem.js` already are. Adding a seventh project is one entry plus a
+    rebuild of each page, not six hand edits.
+
+The reason this exists rather than more hand-written HTML: chrome retyped per
+project drifts per project. siphon's jump navigation had become a `<p>` nested
+inside the header instead of the top-level `<nav>` the rest of the family
+uses, and `position: sticky` is measured against the nearest scrolling
+ancestor — so it scrolled away with the header while every sibling's stayed
+put. Nobody wrote that bug on purpose; it is what copying a layout by hand
+does.
+
+`build.py` and `ecosystem.json` are meant to be copied into the siblings. They
+have not been yet — those pages are still hand-written.
+
 ## Screenshots
 
 `tools/shoot.py` takes them, and the reason it works the way it does is worth

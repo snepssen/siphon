@@ -41,35 +41,40 @@
     <span><b>5</b> conversion engines, none bundled</span>
     <span><b>0</b> accounts, uploads or telemetry</span>
   </div>
+</header>
+</div>
+
+<nav class="jump" aria-label="Jump to a section">
+  <div class="wrap">
+    <a class="mark" href="#top">siphon</a>
+    <ul>
+      <li><a href="#problem">The problem</a></li>
+      <li><a href="#remux">Why it is fast</a></li>
+      <li><a href="#music">Music</a></li>
+      <li><a href="#formats">Formats</a></li>
+      <li><a href="#get">Get it</a></li>
+      <li><a href="#limits">What it will not do</a></li>
+    </ul>
+  </div>
+</nav>
+
+<div class="wrap">
   <figure class="shot">
     <picture>
       <source srcset="screens/queue-dark.png" media="(prefers-color-scheme: dark)">
-      <img src="screens/queue-light.png" alt="siphon's window: a link field, a
-        format chosen from Audio, Video, Images or Documents, the settings that
-        apply to it, and a queue where a fourteen-track album is one row reading
-        4 of 14." width="1920" height="1440" loading="eager" decoding="async">
+      <img src="screens/queue-light.png" alt="siphon's window: a link field, a format chosen from Audio, Video, Images or Documents, the settings that apply to it, and a queue where a fourteen-track album is one row reading 4 of 14." width="1920"
+           height="1440" loading="eager"
+           decoding="async">
     </picture>
-    <figcaption>The window siphon opens on 127.0.0.1. A playlist is one row in
-      the queue, not forty — how many of how many, what is running, and one
-      button to stop the lot.</figcaption>
+    <figcaption>The window siphon opens on 127.0.0.1. A playlist is one row in the queue, not forty — how many of how many, what is running, and one button to stop the lot.</figcaption>
   </figure>
 
-  <p class="jump">
-    <a href="#remux">Why it is fast</a> ·
-    <a href="#music">Music</a> ·
-    <a href="#formats">Formats</a> ·
-    <a href="#get">Get it</a> ·
-    <a href="#limits">What it will not do</a>
-  </p>
-</header>
-
-<section>
+<section id="problem">
   <p class="eyebrow">The problem</p>
   <h2>The hosted ones stopped working</h2>
   <p class="lede">The public <a href="https://github.com/imputnet/cobalt">cobalt</a> instance can no longer fetch from YouTube. Not because of anything wrong with cobalt — because YouTube blocks the addresses a popular shared service runs from. A copy running on your own connection, making a handful of requests, does not have that problem.</p>
   <p>siphon is that, and the other half nobody ships with it. A downloader that hands you a <span class="mono">.webm</span> when you wanted an mp3, and leaves you to find something else to convert it, has done half a job. Here a file already on your disk enters the same pipeline a URL does, simply skipping the stage that fetches bytes.</p>
-
-<div class="figure">
+  <div class="figure">
 <pre class="report mono">siphon get https://…                  <span class="muted">best quality, nothing re-encoded</span>
 siphon get https://… --as mp3         <span class="muted">fetch and make an mp3</span>
 siphon get https://…/playlist --as m4a   <span class="muted">a playlist, tagged and foldered</span>
@@ -85,8 +90,7 @@ siphon list https://…/playlist        <span class="muted">show what is in it, 
   <h2>It does not re-encode what it does not have to</h2>
   <p>Asking for an mp4 is usually not a conversion. The video is already H.264 and the audio already AAC; both are legal inside an mp4; the only work needed is moving the streams into a different wrapper. That takes about a second and changes not one sample. Re-encoding anyway would cost minutes and quality in exchange for nothing at all.</p>
   <p>So siphon compares what is in the file against what you asked for, stream by stream, re-encodes exactly the streams that need it — and tells you which ones those were.</p>
-
-<div class="figure">
+  <div class="figure">
 <pre class="report mono">$ siphon get 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' --as mp4-720 -v
 <span class="pass">✓</span> Big Buck Bunny 60fps 4K.mp4  (153.7 MB)
     fetched aqz-KE-bpKQ.mp4
@@ -95,7 +99,6 @@ siphon list https://…/playlist        <span class="muted">show what is in it, 
     video copied: already h264</pre>
 <p class="caption">Sixteen seconds for 153 MB, and the packets in the output are byte-for-byte the packets that came down the wire. There is a test that proves it — by comparing per-stream packet checksums, because decoded audio is <em>not</em> proof: containers disagree about padding and interleaving, so a perfect copy can decode a few hundred samples adrift.</p>
 </div>
-
   <p>The same reasoning runs backwards into the fetch. Ask for an mp4 and siphon asks yt-dlp for the H.264 and AAC renditions specifically, so the conversion afterwards finds it has nothing to do. Ask for an <span class="mono">.opus</span> from YouTube and the result is a pure copy of what YouTube already serves — 0.09 seconds, against 7.65 to re-encode the same audio to mp3.</p>
   <p>You can see the decision before committing to it: <span class="mono">siphon plan recording.wav --as flac</span>.</p>
 </section>
@@ -105,11 +108,9 @@ siphon list https://…/playlist        <span class="muted">show what is in it, 
   <h2>A playlist is a list of names, not a list of files</h2>
   <p>Paste a Deezer, Spotify or Tidal album, playlist or track. siphon reads the track list — titles, artists, running times, cover art, ISRCs — then finds each track something that will actually serve it, fetches that, tags it, embeds the cover and files it under the album.</p>
   <p>Deezer needs no key at all. Spotify works without one too, by reading the same embed its web player uses — but that path cannot see ISRCs and stops at fifty tracks of a long playlist, so siphon says when a list looks truncated rather than quietly handing you a fraction of it.</p>
-
   <h3>How a track is matched, and when it refuses</h3>
   <p>This is where a music downloader usually goes quietly wrong. The obvious approach is to search the title and take whatever is closest in length. That is wrong often enough to matter:</p>
-
-<div class="figure">
+  <div class="figure">
 <pre class="report mono"><span class="muted">wanted: Daft Punk — Harder, Better, Faster, Stronger (226s)</span>
 
 <span class="pass">100%</span>  225s  Daft Punk            Daft Punk - Harder, Better, Faster, Stronger
@@ -120,13 +121,13 @@ siphon list https://…/playlist        <span class="muted">show what is in it, 
       <span class="muted">length 19s out, looks like a live version</span></pre>
 <p class="caption">“Daft Hands” is a different recording that happens to be <em>closer</em> in length than the real track. A resolver that decides on running time picks it. So running time is worth a quarter of the score and never more; the rest is the title, and whether the artist is the one who uploaded it.</p>
 </div>
-
   <p>Above 75% siphon acts without comment. Below 50% it downloads nothing and names the closest miss. In between it stops and asks — <em>before</em> fetching, with the candidates and the reasons laid out, in the terminal or as a card in the window. A weak match is shown before it downloads, not apologised for after.</p>
-
   <figure class="shot">
     <picture>
       <source srcset="screens/choosing-dark.png" media="(prefers-color-scheme: dark)">
-      <img src="screens/choosing-light.png" alt="A track siphon is not sure about, stopped in the queue. Three candidates are listed with their scores, uploaders, lengths and the reasons for each score, each with a Use this button, and a note that nothing has been downloaded." width="1920" height="1760" loading="lazy" decoding="async">
+      <img src="screens/choosing-light.png" alt="A track siphon is not sure about, stopped in the queue. Candidates are listed with their scores, uploaders, lengths and the reasons for each score, each with a Use this button, and a note that nothing has been downloaded." width="1920"
+           height="1760" loading="lazy"
+           decoding="async">
     </picture>
     <figcaption>Erik Satie's Gnossienne No.1 at 69% — close enough to offer, not close enough to assume. Nothing has been fetched at this point, and the job waits as long as it takes, including across a restart.</figcaption>
   </figure>
@@ -141,6 +142,7 @@ siphon list https://…/playlist        <span class="muted">show what is in it, 
     <div class="card"><h3>Images</h3><p class="mono">jpg · png · webp · tiff · gif</p><p><span class="mono">web-image</span> caps the longest side at 2000px. Transparency is flattened onto white, not the black you would otherwise get.</p></div>
     <div class="card"><h3>Documents</h3><p class="mono">pdf · docx · xlsx · pptx · epub · odt · rtf · html · md · txt · csv</p><p>Office files to PDF keep their layout; documents to markup keep their meaning. Different engines, on purpose.</p></div>
   </div>
+  <p>A preset is where a setting starts, not where it is stuck. Pick a format and the window offers what can be adjusted on it — a bitrate for a lossy audio format, a resolution for video, quality and a size cap for images, a rendering resolution for PDF pages — and the command line takes the same choices. Only the settings that mean something are offered: there is no bitrate on FLAC and no resolution on an audio file, because a control that changes nothing is worse than no control.</p>
   <p class="note">A PDF rendered to images gives you one file per page, not a picture of page one.</p>
 </section>
 
@@ -149,8 +151,7 @@ siphon list https://…/playlist        <span class="muted">show what is in it, 
   <h2>It offers to install what it needs</h2>
   <p>siphon ships no binaries. That is deliberate: yt-dlp releases most weeks because the sites it reads keep changing, and a copy frozen inside a download would be broken by the time you opened it. This way <span class="mono">brew upgrade yt-dlp</span> fixes siphon without siphon being touched.</p>
   <p>So the first run asks, and the default answer is yes to all of it.</p>
-
-<div class="figure">
+  <div class="figure">
 <pre class="report mono">siphon needs a few programs it does not ship.
 
   ffmpeg     needed  <span class="muted">— converting audio and video, and muxing what yt-dlp fetches</span>
@@ -162,7 +163,6 @@ siphon list https://…/playlist        <span class="muted">show what is in it, 
 Install all 2 of these with Homebrew? [Y/n]</pre>
 <p class="caption">On a system whose package manager needs root, siphon prints the command instead of running it. It will not invoke <span class="mono">sudo</span> on your behalf.</p>
 </div>
-
   <p><a href="https://github.com/snepssen/siphon">The source is on GitHub</a>, MIT, Python 3.10 or newer. Clone it and run <span class="mono">./start.sh</span>, or build a <span class="mono">.app</span> and a single-file <span class="mono">.pyz</span> with <span class="mono">./build.sh</span>.</p>
 </section>
 
@@ -172,6 +172,55 @@ Install all 2 of these with Homebrew? [Y/n]</pre>
   <p>siphon fetches things that are served openly. It reads playlists from streaming services as metadata — what the tracks are — and then fetches those tracks from somewhere that serves them. <b>It does not decrypt protected streams, and it will not be made to.</b> If a service hands out its audio under DRM, siphon's answer is that it cannot help, and it says so in those words rather than failing strangely.</p>
   <p>It is not an editor and not a library manager. It does not upload anything anywhere, and nothing leaves your machine except the request that fetches the media. There are no accounts, no telemetry and no cloud anything.</p>
   <p>Two limits worth knowing before you meet them. <b>There is no way back out of a PDF</b> — a PDF describes marks on a page, and the structure the document had before it became one is not in the file; siphon makes PDFs smaller and renders their pages, and does not pretend to un-print them. And <b>converting a document is not transcoding</b>: tracked changes and exact layout do not survive a change of format, so every plan says what it will lose before it runs.</p>
+</section>
+
+<section id="ecosystem">
+  <p class="eyebrow">The workshop</p>
+  <h2>Everything else here</h2>
+  <div class="ecosystem-grid">
+    <a class="ecosystem-card" data-project="gateway-forge" href="https://snepssen.github.io/gateway-forge/">
+      <div class="ecosystem-card__index"><span>01 / JOURNEYS</span><span>macOS · Windows · Linux</span></div>
+      <div class="ecosystem-card__glyph" aria-hidden="true">F10 ── F27</div>
+      <h3>Gateway Forge</h3>
+      <p>Assemble guided sessions and keep published maps beside what was actually found.</p>
+      <span class="ecosystem-card__go">Explore Gateway Forge →</span>
+    </a>
+    <a class="ecosystem-card" data-project="voice-forge" href="https://snepssen.github.io/voice-forge/">
+      <div class="ecosystem-card__index"><span>02 / SPEECH</span><span>macOS · Windows · Linux</span></div>
+      <div class="ecosystem-card__glyph" aria-hidden="true">⌁ / həˈləʊ /</div>
+      <h3>Voice Forge</h3>
+      <p>A transparent Piper workbench for timing, pronunciation, and honest audio export.</p>
+      <span class="ecosystem-card__go">Explore Voice Forge →</span>
+    </a>
+    <a class="ecosystem-card" data-project="protoke" href="https://snepssen.github.io/protoke/">
+      <div class="ecosystem-card__index"><span>03 / VIDEO</span><span>macOS · Windows · Linux</span></div>
+      <div class="ecosystem-card__glyph" aria-hidden="true">◤ w ◥</div>
+      <h3>Protoke</h3>
+      <p>Karaoke and narration video with a vector visor face that mouths every word.</p>
+      <span class="ecosystem-card__go">Explore Protoke →</span>
+    </a>
+    <a class="ecosystem-card" data-project="media-preflight" href="https://snepssen.github.io/media-preflight/">
+      <div class="ecosystem-card__index"><span>04 / DELIVERY</span><span>macOS · Windows · Linux</span></div>
+      <div class="ecosystem-card__glyph" aria-hidden="true">✓ ≤ -3 dB</div>
+      <h3>Media Preflight</h3>
+      <p>Check a finished file against where it is going, and correct it without touching the original.</p>
+      <span class="ecosystem-card__go">Explore Media Preflight →</span>
+    </a>
+    <a class="ecosystem-card" data-project="siphon" href="https://snepssen.github.io/siphon/" aria-current="page">
+      <div class="ecosystem-card__index"><span>05 / INTAKE</span><span>macOS · Windows · Linux</span></div>
+      <div class="ecosystem-card__glyph" aria-hidden="true">webm ⟶ mp3</div>
+      <h3>siphon</h3>
+      <p>Fetch from a link or convert what you already have, without re-encoding what it does not have to.</p>
+      <span class="ecosystem-card__go">Explore siphon →</span>
+    </a>
+    <a class="ecosystem-card" data-project="tools-core" href="https://snepssen.github.io/tools-core/">
+      <div class="ecosystem-card__index"><span>06 / FIELD TOOLS</span><span>Python · shell</span></div>
+      <div class="ecosystem-card__glyph" aria-hidden="true">[ measure → keep ]</div>
+      <h3>tools-core</h3>
+      <p>The small utilities the other projects were built out of, kept where they can be read.</p>
+      <span class="ecosystem-card__go">Explore tools-core →</span>
+    </a>
+  </div>
 </section>
 
 <footer class="contact">

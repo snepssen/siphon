@@ -37,6 +37,12 @@ if [ "${1:-}" != "--skip-tests" ]; then
   say "compiling every module"
   python3 -m compileall -q . -x '(build|dist|\.git)' >/dev/null \
     || { echo "a module does not compile" >&2; exit 1; }
+  # The project page is generated. A hand edit to docs/index.html would be
+  # silently undone by the next build, so a stale one stops the release
+  # rather than shipping and then vanishing.
+  say "checking the project page matches its catalogue"
+  python3 docs/build.py --check >/dev/null \
+    || { echo "docs/index.html is out of date — run python3 docs/build.py" >&2; exit 1; }
 fi
 
 ./build.sh all

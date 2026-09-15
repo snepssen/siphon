@@ -320,6 +320,20 @@ never sent anywhere but to the service they belong to.
 tracks are numbered, and nothing is ever written over the top of something
 already there.
 
+## The project page
+
+`docs/` is built from a catalogue rather than written by hand:
+
+```sh
+python3 docs/build.py
+```
+
+`docs/page.py` holds this project's content and `docs/ecosystem.json` holds
+the list of projects shared across the workshop. Adding a section is one dict;
+the jump navigation derives itself from the sections, so it cannot fall out of
+step with them. `docs/index.html` is generated — editing it directly is undone
+by the next build, and `release.sh` will not package a page that has drifted.
+
 ## Licence
 
 MIT. You are responsible for what you download and what you do with it.
