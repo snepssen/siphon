@@ -178,6 +178,38 @@ button{font:inherit;cursor:pointer}
 .numbers{display:flex;gap:14px;font-size:12px;color:var(--faint);margin-top:6px;
          font-variant-numeric:tabular-nums}
 
+/* ---- a batch: one playlist, one card ----------------------------------- */
+.batch{border-top:1px solid var(--line-soft)}
+.batch:first-child{border-top:0}
+.batch-head{
+  display:flex;align-items:center;gap:10px;padding:13px 16px;width:100%;
+  background:none;border:0;text-align:left;color:inherit;font:inherit;
+}
+.batch-head:hover{background:var(--raise)}
+.batch-name{flex:1;min-width:0;font-size:14px;font-weight:600;
+            overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.batch-count{font-size:12.5px;color:var(--muted);white-space:nowrap;
+             font-variant-numeric:tabular-nums}
+.batch-target{padding:2px 7px;font-size:11.5px;pointer-events:none;
+              border-color:var(--line-soft);color:var(--faint)}
+.chev{width:9px;height:9px;flex:0 0 auto;border-right:1.8px solid var(--faint);
+      border-bottom:1.8px solid var(--faint);transform:rotate(45deg);
+      transition:transform .16s ease;margin-right:2px}
+.batch[data-open="true"] .chev{transform:rotate(-135deg)}
+.batch-bar{padding:0 16px 12px}
+.batch-bar .track{margin-top:0}
+.batch-sub{font-size:12.5px;color:var(--muted);margin-top:7px;
+           overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.batch-jobs{border-top:1px solid var(--line-soft);background:var(--sunk)}
+.batch-jobs .job{padding-left:26px}
+.batch-acts{display:flex;gap:2px;flex:0 0 auto}
+
+/* new rows arrive rather than appearing */
+@media (prefers-reduced-motion: no-preference){
+  .job, .batch{animation:arrive .18s ease-out}
+  @keyframes arrive{from{opacity:0;transform:translateY(-2px)}to{opacity:1}}
+}
+
 /* ---- the question an uncertain match asks ------------------------------ */
 .ask{
   border:1px solid var(--warn);border-radius:11px;margin-top:11px;
@@ -275,7 +307,7 @@ pre.log{background:var(--sunk);border:1px solid var(--line);border-radius:9px;
     </svg>
     <div>
       <div class="name">siphon</div>
-      <div class="where">Files go to <button id="reveal-out">—</button></div>
+      <div class="where" id="status">Files go to <button id="reveal-out">—</button></div>
     </div>
     <div class="spacer"></div>
     <button class="btn ghost" id="toggle-settings" aria-expanded="false">Settings</button>
@@ -372,7 +404,13 @@ const TOKEN = new URLSearchParams(location.search).get("t") || "";
 
 const $ = (id) => document.getElementById(id);
 const state = { jobs: [], formats: [], kind: null, format: null,
-                preview: null, output: "", programs: {} };
+                preview: null, output: "", programs: {},
+                // Which batches are expanded, and the header's own button,
+                // kept so the status line can put it back when work finishes.
+                open: new Set(), revealButton: null,
+                // The shape of the queue as last drawn, and the nodes making
+                // it up, so an update can patch instead of rebuild.
+                shape: null, nodes: new Map() };
 
 async function api(path, body) {
   const options = {
@@ -430,6 +468,14 @@ const STAGE = { resolve: "looking up", fetch: "fetching", convert: "converting",
 const KIND_LABEL = { audio: "Audio", video: "Video", image: "Images",
                      document: "Documents" };
 
+function recall(key) {
+  try { return localStorage.getItem(`siphon.${key}`); } catch { return null; }
+}
+
+function remember(key, value) {
+  try { localStorage.setItem(`siphon.${key}`, value); } catch { /* fine */ }
+}
+
 function itemName(item) {
   if (item.artist && item.title) return `${item.artist} — ${item.title}`;
   return item.title || item.url || item.path || "untitled";
@@ -463,8 +509,13 @@ function renderKinds() {
     button.addEventListener("click", () => {
       state.kind = kind;
       // Land on the first format of the kind, which is the plainest one.
-      const first = state.formats.find((f) => f.kind === kind);
-      if (first) state.format = first.name;
+      // Coming back to a kind, return to the format last used in it rather
+      // than always the first one.
+      const last = recall(`format.${kind}`);
+      const first = state.formats.find(
+        (f) => f.kind === kind && (f.name === last || !last))
+        || state.formats.find((f) => f.kind === kind);
+      if (first) { state.format = first.name; remember("format", first.name); }
       renderKinds();
       renderChips();
     });
@@ -495,11 +546,13 @@ function renderChips() {
     chip.setAttribute("aria-pressed", String(format.name === state.format));
     chip.addEventListener("click", () => {
       state.format = format.name;
+      remember("format", format.name);
       renderChips();
     });
     return chip;
   }));
   const chosen = state.formats.find((f) => f.name === state.format);
+  if (chosen) remember(`format.${chosen.kind}`, chosen.name);
   const reason = chosen ? unavailableReason(chosen) : null;
   $("summary").textContent = chosen
     ? chosen.summary + (reason ? ` — ${reason}, see Settings` : "")
@@ -510,10 +563,14 @@ function renderChips() {
 // The queue
 // ---------------------------------------------------------------------------
 
+const ACTIVE = ["queued", "running", "waiting"];
+const FINISHED = ["done", "failed", "cancelled"];
+
 function render() {
   const jobs = state.jobs;
   const running = jobs.filter((j) => j.state === "running").length;
   const waiting = jobs.filter((j) => j.state === "waiting").length;
+  const active = jobs.filter((j) => ACTIVE.includes(j.state)).length;
 
   const count = $("queue-count");
   if (waiting) { count.hidden = false; count.className = "pill waiting";
@@ -522,13 +579,250 @@ function render() {
                       count.textContent = `${running} running`; }
   else { count.hidden = true; }
 
+  // The header says what is happening, so a queue scrolled out of view still
+  // answers "is it doing anything?" without scrolling back.
+  const status = $("status");
+  if (active) {
+    const done = jobs.filter((j) => j.state === "done").length;
+    status.textContent = waiting
+      ? `${waiting} waiting for you · ${active} to go`
+      : `${done} done · ${active} to go`;
+  } else {
+    status.replaceChildren("Files go to ", state.revealButton);
+  }
+
   $("empty").hidden = jobs.length > 0;
-  $("forget").hidden = !jobs.some((j) => ["done", "failed", "cancelled"].includes(j.state));
-  $("queue").replaceChildren(...jobs.slice().reverse().map(renderJob));
+  $("forget").hidden = !jobs.some((j) => FINISHED.includes(j.state));
+  reconcile($("queue"), groupJobs(jobs));
 }
 
-function renderJob(job) {
-  const node = el("div", "job");
+// ---------------------------------------------------------------------------
+// Keeping the nodes that are already there
+//
+// The queue used to be rebuilt from scratch on every frame, and updates
+// arrive several times a second. Reaching for "Stop all" and finding it
+// replaced under the pointer between the mousedown and the click is the
+// difference between a tool that feels solid and one that feels slippery.
+//
+// So each group keeps its element across updates, keyed by job or batch id.
+// Contents are written into the element that is already there; only genuinely
+// new groups create anything, and only departed ones are removed.
+// ---------------------------------------------------------------------------
+
+function reconcile(container, groups) {
+  const seen = new Set();
+  const ordered = [];
+
+  for (const group of groups) {
+    const key = group.single ? `j:${group.single.id}` : `b:${group.batch}`;
+    seen.add(key);
+    let node = state.nodes.get(key);
+    if (!node) {
+      node = group.single ? renderJob(group.single) : renderBatch(group);
+      state.nodes.set(key, node);
+    } else if (group.single) {
+      updateJob(node, group.single);
+    } else {
+      updateBatch(node, group);
+    }
+    ordered.push(node);
+  }
+
+  for (const [key, node] of [...state.nodes]) {
+    if (!seen.has(key)) { node.remove(); state.nodes.delete(key); }
+  }
+  ordered.forEach((node, index) => {
+    if (container.children[index] !== node) {
+      container.insertBefore(node, container.children[index] || null);
+    }
+  });
+}
+
+function setText(node, selector, text) {
+  const target = node.querySelector(selector);
+  if (target && target.textContent !== text) target.textContent = text;
+}
+
+function updateJob(node, job) {
+  // A job's own row changes shape when it changes state, so that part is
+  // redrawn — but into the element that is already on the page.
+  const fresh = renderJob(job, node);
+  if (fresh !== node) node.replaceChildren(...fresh.childNodes);
+}
+
+function updateBatch(node, group) {
+  const jobs = group.jobs;
+  const done = jobs.filter((j) => j.state === "done").length;
+  const failed = jobs.filter((j) => j.state === "failed").length;
+  const waiting = jobs.filter((j) => j.state === "waiting").length;
+  const active = jobs.filter((j) => ACTIVE.includes(j.state));
+  const running = jobs.filter((j) => j.state === "running");
+  const open = state.open.has(group.batch);
+
+  node.dataset.open = String(open);
+  const head = node.querySelector(".batch-head");
+  if (head) head.setAttribute("aria-expanded", String(open));
+
+  const mark = waiting ? "waiting" : running.length ? "running"
+    : active.length ? "queued" : failed ? "failed" : "done";
+  const dot = node.querySelector(".batch-head .state-dot");
+  if (dot) dot.className = `state-dot ${mark}`;
+  setText(node, ".batch-count", `${done} of ${jobs.length}`);
+
+  const bar = node.querySelector(".batch-bar");
+  if (active.length || failed) {
+    const fresh = batchBar(jobs, active, running, waiting, failed);
+    if (bar) bar.replaceWith(fresh); else head.after(fresh);
+  } else if (bar) {
+    bar.remove();
+  }
+
+  // Buttons are only replaced when which buttons there are has changed, so
+  // the one being clicked survives a progress update.
+  const acts = node.querySelector(".batch-acts");
+  const wanted = batchActions(jobs, active, done);
+  const labels = [...wanted.children].map((b) => b.textContent).join("|");
+  if (acts && labels !== [...acts.children].map((b) => b.textContent).join("|")) {
+    acts.replaceWith(wanted);
+  } else if (!acts && wanted.childElementCount) {
+    head.append(wanted);
+  }
+
+  const list = node.querySelector(".batch-jobs");
+  if (open) {
+    const fresh = el("div", "batch-jobs");
+    fresh.replaceChildren(...jobs.map((job) => renderJob(job)));
+    if (list) list.replaceWith(fresh); else node.append(fresh);
+  } else if (list) {
+    list.remove();
+  }
+}
+
+function groupJobs(jobs) {
+  // A playlist is one thing somebody asked for, not forty. Fourteen rows of
+  // "Daft Punk — …  QUEUED  Stop" is a wall; one row saying "3 of 14" is an
+  // answer. Singles stay as they are — wrapping one job in a card would be
+  // ceremony around nothing.
+  const groups = [];
+  const byBatch = new Map();
+
+  for (const job of jobs) {
+    if (!job.batch) { groups.push({ single: job, at: groups.length }); continue; }
+    let group = byBatch.get(job.batch);
+    if (!group) {
+      group = { batch: job.batch, jobs: [], at: groups.length };
+      byBatch.set(job.batch, group);
+      groups.push(group);
+    }
+    group.jobs.push(job);
+  }
+
+  for (const group of groups) {
+    if (!group.jobs) continue;
+    // Within an album, track order. Between albums, newest first.
+    group.jobs.sort((a, b) =>
+      (a.item.collection_index || 0) - (b.item.collection_index || 0));
+  }
+  return groups.reverse();
+}
+
+function renderGroup(group) {
+  return group.single ? renderJob(group.single) : renderBatch(group);
+}
+
+function renderBatch(group) {
+  const jobs = group.jobs;
+  const done = jobs.filter((j) => j.state === "done").length;
+  const failed = jobs.filter((j) => j.state === "failed").length;
+  const waiting = jobs.filter((j) => j.state === "waiting").length;
+  const active = jobs.filter((j) => ACTIVE.includes(j.state));
+  const running = jobs.filter((j) => j.state === "running");
+  const open = state.open.has(group.batch);
+
+  const node = el("div", "batch");
+  node.dataset.open = String(open);
+
+  const head = el("button", "batch-head");
+  head.type = "button";
+  head.setAttribute("aria-expanded", String(open));
+  head.append(el("span", "chev"));
+
+  const mark = waiting ? "waiting" : running.length ? "running"
+    : active.length ? "queued" : failed ? "failed" : "done";
+  head.append(el("span", `state-dot ${mark}`));
+  // The key identifies the addition; the name comes off the items, which is
+  // where a human-readable one actually lives.
+  head.append(el("div", "batch-name",
+                 jobs[0].item.collection || jobs[0].item.album || "Batch"));
+  // The format distinguishes two additions of the same album, which is
+  // otherwise two identical rows.
+  const targets = [...new Set(jobs.map((j) => j.target))];
+  if (targets.length === 1) head.append(el("span", "chip batch-target", targets[0]));
+  head.append(el("span", "batch-count", `${done} of ${jobs.length}`));
+  head.addEventListener("click", (event) => {
+    // A click on one of the buttons in the head is not a click on the head.
+    if (event.target.closest(".batch-acts")) return;
+    if (state.open.has(group.batch)) state.open.delete(group.batch);
+    else state.open.add(group.batch);
+    render();
+  });
+  node.append(head);
+
+  if (active.length || failed) {
+    node.append(batchBar(jobs, active, running, waiting, failed));
+  }
+  const acts = batchActions(jobs, active, done);
+  if (acts.childElementCount) head.append(acts);
+
+  if (open) {
+    const list = el("div", "batch-jobs");
+    list.replaceChildren(...jobs.map((job) => renderJob(job)));
+    node.append(list);
+  }
+  return node;
+}
+
+function batchBar(jobs, active, running, waiting, failed) {
+  const bar = el("div", "batch-bar");
+  const track = el("div", "track");
+  const fill = el("i");
+  // Part-finished jobs count for part of the bar, so a big first track does
+  // not leave it apparently stuck at zero.
+  const progress = jobs.reduce((sum, job) =>
+    sum + (job.state === "done" ? 1
+         : job.state === "running" ? (job.progress || 0) : 0), 0);
+  fill.style.width = `${Math.round((progress / jobs.length) * 100)}%`;
+  if (failed && !active.length) track.classList.add("bad");
+  track.append(fill);
+  bar.append(track);
+
+  const bits = [];
+  if (running.length) {
+    bits.push(running.map((j) => itemName(j.item)).join(", "));
+  } else if (waiting) {
+    bits.push(`${waiting} waiting for you to choose`);
+  }
+  if (failed) bits.push(`${failed} could not be found`);
+  if (bits.length) bar.append(el("div", "batch-sub", bits.join(" · ")));
+  return bar;
+}
+
+function batchActions(jobs, active, done) {
+  const acts = el("div", "batch-acts");
+  if (active.length) {
+    acts.append(button("Stop all", async () => {
+      for (const job of active) await api("/api/cancel", { id: job.id });
+    }));
+  } else if (done && jobs[0].output_path) {
+    acts.append(button("Show", () =>
+      api("/api/reveal", { path: jobs[0].output_path })));
+  }
+  return acts;
+}
+
+function renderJob(job, into) {
+  const node = into || el("div", "job");
+  if (into) node.replaceChildren();
   const running = job.state === "running";
   const asking = job.state === "waiting";
   const failed = job.state === "failed";
@@ -579,14 +873,20 @@ function renderJob(job) {
     node.append(track);
 
     const numbers = el("div", "numbers");
-    if (job.bytes_total) {
-      numbers.append(el("span", null, `${size(job.bytes_done)} of ${size(job.bytes_total)}`));
-    }
-    if (job.speed) numbers.append(el("span", null, `${(job.speed / 1e6).toFixed(1)} MB/s`));
-    if (job.eta) numbers.append(el("span", null, `${clock(job.eta)} left`));
-    if (numbers.childElementCount) node.append(numbers);
+    numbers.replaceChildren(...numberCells(job));
+    node.append(numbers);
   }
   return node;
+}
+
+function numberCells(job) {
+  const cells = [];
+  if (job.bytes_total) {
+    cells.push(el("span", null, `${size(job.bytes_done)} of ${size(job.bytes_total)}`));
+  }
+  if (job.speed) cells.push(el("span", null, `${(job.speed / 1e6).toFixed(1)} MB/s`));
+  if (job.eta) cells.push(el("span", null, `${clock(job.eta)} left`));
+  return cells;
 }
 
 function renderChoice(job) {
@@ -653,6 +953,7 @@ async function submit() {
     if (found.count === 1) {
       await api("/api/add", { items: found.items, format: state.format });
       $("url").value = "";
+      $("url").focus();           // so the next paste needs no click
     } else if (found.count > 1) {
       showPreview(found);
     } else {
@@ -900,10 +1201,18 @@ function wireDrop() {
 function listen() {
   const stream = new EventSource(`/api/events?t=${encodeURIComponent(TOKEN)}`);
   stream.onmessage = (event) => {
+    let payload;
     try {
-      state.jobs = JSON.parse(event.data).jobs || [];
-      render();
-    } catch { /* a malformed frame is not worth breaking the page over */ }
+      payload = JSON.parse(event.data);
+    } catch {
+      return;                 // a malformed frame is not worth reacting to
+    }
+    // Deliberately outside the try. Wrapping render() swallowed a
+    // ReferenceError on every single frame and showed a queue that simply
+    // never updated — no error, no clue. A bug in our own drawing should be
+    // loud.
+    state.jobs = payload.jobs || [];
+    render();
   };
   stream.onerror = () => {
     // The server went away, or the laptop slept. Close this one and try again
@@ -922,7 +1231,13 @@ async function start() {
   state.jobs = initial.jobs;
   state.formats = initial.formats;
   state.output = initial.output;
-  state.format = initial.default_format;
+  // What you picked last time is almost always what you want this time, and
+  // having to choose again on every launch is a small tax on every use.
+  // localStorage can be absent or throw in a private window, so a failure
+  // here just means the default.
+  const remembered = recall("format");
+  const known = initial.formats.some((f) => f.name === remembered);
+  state.format = known ? remembered : initial.default_format;
   state.kind = (initial.formats.find((f) => f.name === state.format) || {}).kind
                || initial.formats[0]?.kind;
 
@@ -930,6 +1245,7 @@ async function start() {
   reveal.textContent = initial.output;
   reveal.addEventListener("click", () =>
     api("/api/reveal", { path: initial.output }).catch(() => {}));
+  state.revealButton = reveal;
 
   renderKinds();
   renderPrograms(initial.programs);
@@ -991,6 +1307,14 @@ $("toggle-settings").addEventListener("click", async (event) => {
       await renderCobalt();
     } catch (error) { flash(error.message); }
   }
+});
+
+addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  // Escape means "never mind" in order of how much is in the way.
+  if (!$("preview").hidden) { hidePreview(); return; }
+  if (!$("settings").hidden) { $("toggle-settings").click(); return; }
+  $("url").focus();
 });
 
 wireDrop();

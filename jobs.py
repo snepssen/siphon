@@ -19,6 +19,7 @@ import json
 import shutil
 import threading
 import time
+import uuid
 from collections import deque
 from pathlib import Path
 
@@ -62,16 +63,22 @@ class Queue:
     def add_url(self, target_url, format_name, output=None, **options):
         """Expand a URL or path and queue everything it turned out to be."""
         items = sources.expand(target_url, **options)
-        batch = None
         if len(items) > 1:
-            batch = items[0].collection or target_url
             for item in items:
                 item.extra["collection_size"] = len(items)
-        return self.add(items, format_name, output=output, batch=batch)
+        return self.add(items, format_name, output=output)
 
     def add(self, items, format_name, output=None, batch=None):
-        """Queue items against a target format. Returns the jobs created."""
+        """Queue items against a target format. Returns the jobs created.
+
+        A batch identifies *this* addition, not the album — adding the same
+        playlist twice is two batches. Keying it on the collection's name
+        merged them, so a second copy of a 14-track album reported itself as
+        one batch of 28 and a single "Stop all" would have stopped both.
+        """
         formats.resolve(format_name)          # fail now, not in a worker
+        if batch is None and len(items) > 1:
+            batch = uuid.uuid4().hex[:12]
         created = []
         with self._lock:
             for item in items:

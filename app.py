@@ -310,8 +310,7 @@ class Handler(BaseHTTPRequestHandler):
         supplied = body.get("items")
         if supplied:
             items = [model.Item.from_dict(data) for data in supplied]
-            batch = items[0].collection if len(items) > 1 else None
-            created = _queue.add(items, fmt, output=output, batch=batch)
+            created = _queue.add(items, fmt, output=output)
         else:
             target = (body.get("url") or "").strip()
             if not target:

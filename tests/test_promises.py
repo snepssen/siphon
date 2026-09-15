@@ -202,6 +202,49 @@ class StateSurvivesRestarts(unittest.TestCase):
             self.assertEqual(restored.state, model.QUEUED)
 
 
+class ABatchIsOneAddition(unittest.TestCase):
+    """Not one album — the same playlist added twice is two batches.
+
+    Keying a batch on the collection's name merged them, so a second copy of
+    a fourteen-track album reported itself as one batch of twenty-eight and a
+    single "Stop all" would have stopped both.
+    """
+
+    def setUp(self):
+        import jobs as jobs_module
+        self.directory = tempfile.TemporaryDirectory()
+        self.queue = jobs_module.Queue(
+            workers=1, state_path=Path(self.directory.name) / "queue.json")
+
+    def tearDown(self):
+        self.queue.stop(wait=False)
+        self.directory.cleanup()
+
+    def _album(self):
+        return [Item(title=f"Track {n}", artist="Band", collection="An Album",
+                     collection_index=n) for n in range(1, 5)]
+
+    def test_two_additions_of_the_same_album_do_not_merge(self):
+        first = self.queue.add(self._album(), "mp3")
+        second = self.queue.add(self._album(), "flac")
+        self.assertIsNotNone(first[0].batch)
+        self.assertNotEqual(first[0].batch, second[0].batch)
+
+    def test_one_addition_shares_a_batch(self):
+        created = self.queue.add(self._album(), "mp3")
+        self.assertEqual(len({job.batch for job in created}), 1)
+
+    def test_a_single_item_gets_no_batch(self):
+        """Wrapping one job in a batch card would be ceremony around nothing."""
+        created = self.queue.add([Item(title="Just one")], "mp3")
+        self.assertIsNone(created[0].batch)
+
+    def test_the_name_is_still_on_the_items(self):
+        """The key is an id now, so the label has to come from somewhere."""
+        created = self.queue.add(self._album(), "mp3")
+        self.assertEqual(created[0].item.collection, "An Album")
+
+
 class CredentialsAreNotLeaked(unittest.TestCase):
     def test_status_shows_only_the_last_four_characters(self):
         import credentials
