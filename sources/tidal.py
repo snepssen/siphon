@@ -79,7 +79,6 @@ def expand(url, limit=None, **_options):
         albums = _related(resource, "albums", index)
         if albums:
             item.album = _attributes(albums[0]).get("title")
-            item.artwork_url = item.artwork_url or artwork_url(albums[0], index)
         return [item]
     if kind == "album":
         return _album(identifier, country, limit=limit)
@@ -332,6 +331,24 @@ def artwork_url(resource, index):
     return None
 
 
+def _track_artwork(track, index):
+    """A track's cover, which belongs to its album rather than to it.
+
+    Only works when the album came along with its artwork — an include of
+    `albums` alone fetches the album and leaves the picture behind, so the
+    request has to ask for `albums.coverArt`. The failure is silent: a track
+    simply arrives with no cover.
+    """
+    direct = artwork_url(track, index)
+    if direct:
+        return direct
+    for album in _related(track, "albums", index):
+        found = artwork_url(album, index)
+        if found:
+            return found
+    return None
+
+
 def external_url(attributes):
     """The tidal.com address for a resource, out of `externalLinks`."""
     for link in attributes.get("externalLinks") or []:
@@ -375,7 +392,7 @@ def _track(resource, index, album=None, cover=None, position=None, meta=None):
         duration=seconds(attributes.get("duration")),
         track_number=meta.get("trackNumber") or position,
         disc_number=meta.get("volumeNumber"),
-        artwork_url=artwork_url(resource, index) or cover,
+        artwork_url=_track_artwork(resource, index) or cover,
         webpage_url=external_url(attributes),
         extra={"tidal_id": resource.get("id"),
                "explicit": attributes.get("explicit"),
@@ -396,10 +413,8 @@ def _album(identifier, country, limit=None):
     cover = artwork_url(album, index)
     year = _year(attributes.get("releaseDate"))
 
-    tracks = _linked(album, "items", index)
-    if len(tracks) < (attributes.get("numberOfItems") or 0):
-        tracks += _page(f"albums/{identifier}/relationships/items", country,
-                        index, have=len(tracks), limit=limit)
+    tracks = _complete(album, f"albums/{identifier}/relationships/items",
+                       country, index, limit=limit)
     if not tracks:
         raise SourceError(f"“{title}” came back with no tracks siphon can read.")
     if limit:
@@ -421,14 +436,13 @@ def _album(identifier, country, limit=None):
 
 def _playlist(identifier, country, limit=None):
     payload = _get(f"playlists/{identifier}", countryCode=country,
-                   include="items,items.artists,items.albums")
+                   include="items.artists,items.albums.coverArt,coverArt")
     playlist = _resource(payload)
     index = _index(payload)
     title = _attributes(playlist).get("name") or _attributes(playlist).get("title")
 
-    tracks = _linked(playlist, "items", index)
-    tracks += _page(f"playlists/{identifier}/relationships/items", country,
-                    index, have=len(tracks), limit=limit)
+    tracks = _complete(playlist, f"playlists/{identifier}/relationships/items",
+                       country, index, limit=limit)
     if not tracks:
         raise SourceError(f"“{title}” came back with no tracks siphon can read.")
     if limit:
@@ -436,13 +450,37 @@ def _playlist(identifier, country, limit=None):
 
     items = []
     for position, (resource, meta) in enumerate(tracks, start=1):
-        item = _track(resource, index, position=None, meta={})
-        item.artwork_url = item.artwork_url or artwork_url(playlist, index)
+        item = _track(resource, index, position=None, meta={},
+                      cover=artwork_url(playlist, index))
         item.collection = title
         item.collection_index = position
         item.extra["collection_size"] = len(tracks)
         items.append(item)
     return items
+
+
+def _complete(resource, path, country, index, limit=None):
+    """Every item of an album or playlist, without fetching page one twice.
+
+    The embedded `items` relationship holds the first page only — twenty
+    entries, whatever the collection's real size — and the paging endpoint
+    starts again from the beginning rather than from where that left off.
+    Adding the two together is how a 25-track playlist comes back with 45
+    tracks in it, which is exactly what it did.
+
+    So: keep the embedded list when it is already the whole thing, and
+    otherwise page the collection and use that, which is complete and in
+    order. It costs one repeated request and removes a whole class of
+    duplicate.
+    """
+    embedded = _linked(resource, "items", index)
+    expected = _attributes(resource).get("numberOfItems")
+    if expected is None or len(embedded) >= expected:
+        return embedded
+    if limit and len(embedded) >= int(limit):
+        return embedded
+    paged = _page(path, country, index, limit=limit)
+    return paged if len(paged) >= len(embedded) else embedded
 
 
 def _page(path, country, index, have=0, limit=None, cap=60):

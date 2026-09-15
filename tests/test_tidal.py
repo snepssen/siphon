@@ -18,6 +18,7 @@ on the track; and cover art is a `coverArt` relationship to an `artworks`
 resource holding the same image at seven sizes.
 """
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -186,6 +187,68 @@ class TheJsonApiJoin(unittest.TestCase):
         track, meta = tidal._linked(self.album, "items", self.index)[1]
         item = tidal._track(track, self.index, meta=meta)
         self.assertEqual(item.title, "Aerodynamic (Remastered)")
+
+
+class GettingTheWholeList(unittest.TestCase):
+    """The embedded relationship is page one, and paging restarts from page one.
+
+    A real 25-track playlist came back with 45 tracks in it: twenty from the
+    embedded relationship, then twenty-five more from the paging endpoint,
+    which does not continue from where the embedded list stopped. `_complete`
+    is what decides between the two rather than adding them together.
+    """
+
+    def setUp(self):
+        self.index = tidal._index(ALBUM)
+        self.album = tidal._resource(ALBUM)
+
+    def test_a_complete_embedded_list_is_used_as_is(self):
+        # numberOfItems is 2 in the fixture and two items are embedded.
+        called = []
+
+        def explode(*args, **kwargs):
+            called.append(args)
+            raise AssertionError("must not page a list that is already whole")
+
+        original, tidal._page = tidal._page, explode
+        try:
+            got = tidal._complete(self.album, "albums/x/relationships/items",
+                                  "GB", self.index)
+        finally:
+            tidal._page = original
+        self.assertEqual(len(got), 2)
+        self.assertEqual(called, [])
+
+    def test_a_short_embedded_list_is_replaced_not_appended(self):
+        short = json.loads(json.dumps(ALBUM))
+        short["data"]["attributes"]["numberOfItems"] = 4
+        index = tidal._index(short)
+        album = tidal._resource(short)
+
+        paged = [(entry, {"trackNumber": n})
+                 for n, entry in enumerate(
+                     [i for i in short["included"] if i["type"] == "tracks"] * 2,
+                     start=1)]
+        original, tidal._page = tidal._page, lambda *a, **k: paged
+        try:
+            got = tidal._complete(album, "albums/x/relationships/items",
+                                  "GB", index)
+        finally:
+            tidal._page = original
+        self.assertEqual(len(got), 4, "20 embedded + 25 paged is the bug")
+
+    def test_a_failed_page_falls_back_to_what_was_embedded(self):
+        short = json.loads(json.dumps(ALBUM))
+        short["data"]["attributes"]["numberOfItems"] = 40
+        index = tidal._index(short)
+        album = tidal._resource(short)
+        original, tidal._page = tidal._page, lambda *a, **k: []
+        try:
+            got = tidal._complete(album, "albums/x/relationships/items",
+                                  "GB", index)
+        finally:
+            tidal._page = original
+        self.assertEqual(len(got), 2, "a partial list beats no list")
 
 
 class WorkingOutTheCountry(unittest.TestCase):

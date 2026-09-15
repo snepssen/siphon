@@ -151,12 +151,19 @@ m4a and flac only. Adding opus to that set would silently drop the artwork
 rather than embed it. Relatedly, mp4 has no standard ISRC atom, so an m4a
 loses the ISRC that a flac or an mp3 keeps.
 
-**Tidal's album and track paths are verified; the playlist path is not.**
-Albums, single tracks, auth, pagination shape and artwork have all been run
-against the real service. `_playlist` has not — listing playlists needs a
-filter and there was no real playlist id to hand, so it is written to the same
-conventions as `_album` and remains unproven. Verifying it needs nothing more
-than one real Tidal playlist link.
+**Tidal is verified end to end** — albums, playlists, single tracks, auth,
+pagination and artwork, all run against the real service.
+
+**The embedded relationship is page one, and paging restarts from page one.**
+An album or playlist response carries at most twenty items in
+`relationships.items`, whatever `numberOfItems` says, and
+`/relationships/items` begins again from the start rather than continuing.
+Adding one to the other gave a 25-track playlist 45 tracks. `_complete` picks
+between them instead: the embedded list when it is already whole, the paged
+list otherwise, and the embedded list again if paging comes back empty,
+because a partial list beats no list. It cost one repeated request and removed
+a whole class of duplicate. The album path hid this for a while because a
+14-track album fits in one response.
 
 **What guessing the schema got wrong**, kept here because it is what the
 inference-versus-capture distinction actually costs. Four of the field names
@@ -178,7 +185,11 @@ at all. What is real:
   * **A nested include must name the relationship it wants.** `include=albums`
     on a track gets the album without its artwork; `include=albums.coverArt`
     is what actually produces a cover. This is silent — the track simply comes
-    out with no picture.
+    out with no picture. The same mistake left every playlist track coverless
+    until the include asked for `items.albums.coverArt,coverArt`.
+  * **A playlist's title is `name`, and its items carry no track numbers** —
+    the reference meta holds `itemId` and `addedAt` instead, so position comes
+    from the order, which is what `_track(..., position=…)` is for.
   * **`title` and `version` are separate.** Tidal stores "Aerodynamic" and
     "Remastered" apart; everywhere else calls that one name, so `_track`
     joins them.
