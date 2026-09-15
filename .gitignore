@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+
+# Media siphon fetched or converted while it was being worked on.
+out/
+downloads/
+
+# Build output. ./build.sh remakes all of it from what is committed.
+build/
+dist/
