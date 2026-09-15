@@ -445,16 +445,41 @@ cannot yet handle should be a new module in `engines/` and one line in
   `bootstrap.py` — which is the convention the whole family follows and the
   thing to copy into the next tool.
 
+- **Packaging, done.** `build.sh` makes a zipapp and a `.app`, `release.sh`
+  packages four archives and stops short of publishing, and `docs/` is the
+  project page at snepssen.github.io/siphon.
+- **The window, done.** Batched queue, adjustable quality, queue controls,
+  and `tests/test_window.py` covering the token and origin checks that stop
+  another tab driving it.
+
 ## What is not done
 
-- **No `build.sh` or `release.sh`.** The zipapp builds by hand
-  (`python3 -m zipapp . -o siphon.pyz -p "/usr/bin/env python3"`) and works,
-  but there is nothing scripted and no `.app` the way `media-preflight` has.
-- **No `docs/` page**, so nothing to publish and no homepage on the repo.
-- **`app.py` is untested**, and its `_authorised` is what stops any open
-  browser tab driving a downloader that writes files. That is the coverage gap
-  worth closing first. `net`, `siphon`, and the Deezer/Spotify/local sources
-  are also only exercised live.
-- **siphon is missing from the top-level `ORGANISING.md`**, which is the one
-  document that exists so a folder does not have to be opened to know what it
-  is.
+- **`net.py`, `siphon.py` and the Deezer/Spotify/local sources have no tests**
+  of their own. They are exercised live constantly, which is not the same
+  thing.
+- **cobalt's YouTube** — blocked upstream, see above. Nothing to do but wait.
+
+## Screenshots
+
+`tools/shoot.py` takes them, and the reason it works the way it does is worth
+knowing before changing it. The window keeps an open event-stream, so a
+headless browser never decides the page has finished loading —
+`--virtual-time-budget` waits on a connection that by design never closes, and
+hangs.
+
+So the page is photographed with its own data and nothing live: the tool
+fetches the page and the state the server would have sent it, then puts a shim
+in front that answers `fetch` from that captured state and stubs
+`EventSource`. **Not a line of the application is copied or changed.** The
+picture cannot drift from the interface, because it is the interface.
+
+Drive the window to the state worth showing, then:
+
+```sh
+python3 tools/shoot.py "http://127.0.0.1:7788/?t=THE_TOKEN" queue docs/screens
+```
+
+Both themes come out, because `?theme=` stamps `data-theme` on the root and
+wins over the system and the saved choice alike. Run the PNGs through
+`magick … -strip -colors 256` afterwards — it took 156 KB to 55 KB here with
+no visible difference on a flat interface.

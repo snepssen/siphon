@@ -222,3 +222,17 @@ footer{padding:38px 0 60px;color:var(--muted);font-size:14px}
 .card h3{margin:0 0 8px;font-size:15px}
 .card p{font-size:14px;margin:0 0 .6em;max-width:none}
 .card p.mono{color:var(--signal);font-size:13px;word-spacing:.15em}
+
+/* Screenshots of the real interface. Framed rather than floated: a window
+   photographed on a page wants an edge, or it reads as part of the page. */
+.shot{margin:26px 0 0;max-width:none}
+.shot picture{display:block}
+.shot img{
+  display:block;width:100%;height:auto;border-radius:12px;
+  border:1px solid var(--line);
+  box-shadow:0 1px 2px rgba(0,0,0,.18), 0 24px 60px -30px rgba(0,0,0,.55);
+  background:var(--surface);
+}
+.shot figcaption{
+  font-size:14px;color:var(--muted);margin-top:11px;max-width:var(--measure);
+}

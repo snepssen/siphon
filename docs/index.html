@@ -41,6 +41,19 @@
     <span><b>5</b> conversion engines, none bundled</span>
     <span><b>0</b> accounts, uploads or telemetry</span>
   </div>
+  <figure class="shot">
+    <picture>
+      <source srcset="screens/queue-dark.png" media="(prefers-color-scheme: dark)">
+      <img src="screens/queue-light.png" alt="siphon's window: a link field, a
+        format chosen from Audio, Video, Images or Documents, the settings that
+        apply to it, and a queue where a fourteen-track album is one row reading
+        4 of 14." width="1920" height="1440" loading="eager" decoding="async">
+    </picture>
+    <figcaption>The window siphon opens on 127.0.0.1. A playlist is one row in
+      the queue, not forty — how many of how many, what is running, and one
+      button to stop the lot.</figcaption>
+  </figure>
+
   <p class="jump">
     <a href="#remux">Why it is fast</a> ·
     <a href="#music">Music</a> ·
@@ -109,6 +122,14 @@ siphon list https://…/playlist        <span class="muted">show what is in it, 
 </div>
 
   <p>Above 75% siphon acts without comment. Below 50% it downloads nothing and names the closest miss. In between it stops and asks — <em>before</em> fetching, with the candidates and the reasons laid out, in the terminal or as a card in the window. A weak match is shown before it downloads, not apologised for after.</p>
+
+  <figure class="shot">
+    <picture>
+      <source srcset="screens/choosing-dark.png" media="(prefers-color-scheme: dark)">
+      <img src="screens/choosing-light.png" alt="A track siphon is not sure about, stopped in the queue. Three candidates are listed with their scores, uploaders, lengths and the reasons for each score, each with a Use this button, and a note that nothing has been downloaded." width="1920" height="1760" loading="lazy" decoding="async">
+    </picture>
+    <figcaption>Erik Satie's Gnossienne No.1 at 69% — close enough to offer, not close enough to assume. Nothing has been fetched at this point, and the job waits as long as it takes, including across a restart.</figcaption>
+  </figure>
 </section>
 
 <section id="formats">

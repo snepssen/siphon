@@ -22,8 +22,11 @@
   --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px -12px rgba(16,24,40,.14);
   --radius:14px;
 }
+/* Dark is the system's business by default. A choice, when somebody makes
+   one, is stamped on the root and wins in both directions — which is also
+   what lets a screenshot be taken of either. */
 @media (prefers-color-scheme: dark){
-  :root{
+  :root:not([data-theme="light"]){
     --ground:#121418; --surface:#1A1D23; --raise:#22262E; --sunk:#15181D;
     --line:#2C313A; --line-soft:#242931;
     --ink:#E9EBEF; --muted:#9BA3AF; --faint:#6E7684;
@@ -32,6 +35,15 @@
     --pass-soft:#16281F; --warn-soft:#2A2213; --fail-soft:#2B1917;
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -16px rgba(0,0,0,.7);
   }
+}
+:root[data-theme="dark"]{
+    --ground:#121418; --surface:#1A1D23; --raise:#22262E; --sunk:#15181D;
+    --line:#2C313A; --line-soft:#242931;
+    --ink:#E9EBEF; --muted:#9BA3AF; --faint:#6E7684;
+    --accent:#7AA7FF; --accent-ink:#0E1220; --accent-soft:#1B2740;
+    --pass:#6FD39A; --warn:#F0B849; --fail:#FF8A80;
+    --pass-soft:#16281F; --warn-soft:#2A2213; --fail-soft:#2B1917;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -16px rgba(0,0,0,.7);
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -379,9 +391,9 @@ pre.log{background:var(--sunk);border:1px solid var(--line);border-radius:9px;
       <span class="pill" id="queue-count" hidden></span>
       <div class="spacer"></div>
       <div class="queue-controls">
-        <button class="btn small" id="pause">Pause</button>
-        <button class="btn small danger" id="stop-all">Stop all</button>
-        <button class="btn ghost" id="forget">Clear</button>
+        <button class="btn small" id="pause" disabled>Pause</button>
+        <button class="btn small danger" id="stop-all" hidden>Stop all</button>
+        <button class="btn ghost" id="forget" hidden>Clear</button>
       </div>
     </div>
     <div class="paused-note" id="paused-note" hidden>
@@ -403,6 +415,14 @@ pre.log{background:var(--sunk);border:1px solid var(--line);border-radius:9px;
 
   <!-- ---------------------------------------------------------------- -->
   <section class="panel" id="settings" hidden>
+    <div class="panel-head"><h2>Appearance</h2></div>
+    <div class="panel-body">
+      <div class="opt-row" style="margin-top:0">
+        <span class="opt-label">Theme</span>
+        <div class="opt-choices" id="themes"></div>
+      </div>
+    </div>
+
     <div class="panel-head"><h2>Programs</h2></div>
     <div class="panel-body">
       <div class="rows" id="programs"></div>
@@ -437,7 +457,20 @@ pre.log{background:var(--sunk);border:1px solid var(--line);border-radius:9px;
 
 // The token is in this page's own address. Every call carries it; without it
 // the server answers nothing, which is what stops another tab driving this.
-const TOKEN = new URLSearchParams(location.search).get("t") || "";
+const PARAMS = new URLSearchParams(location.search);
+const TOKEN = PARAMS.get("t") || "";
+
+// Before anything else, so there is no flash of the other theme. A `theme`
+// in the address wins over the saved choice, which is how a screenshot of
+// either one gets taken without changing what the user picked.
+(() => {
+  let theme;
+  try { theme = PARAMS.get("theme") || localStorage.getItem("siphon.theme"); }
+  catch { theme = PARAMS.get("theme"); }
+  if (theme === "light" || theme === "dark") {
+    document.documentElement.setAttribute("data-theme", theme);
+  }
+})();
 
 const $ = (id) => document.getElementById(id);
 const state = { jobs: [], formats: [], kind: null, format: null,
@@ -1139,6 +1172,28 @@ function hidePreview() {
 // Settings
 // ---------------------------------------------------------------------------
 
+const THEMES = [["system", "Follow system"], ["light", "Light"], ["dark", "Dark"]];
+
+function applyTheme(theme) {
+  if (theme === "system") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", theme);
+}
+
+function renderThemes() {
+  const current = recall("theme") || "system";
+  $("themes").replaceChildren(...THEMES.map(([value, label]) => {
+    const chip = el("button", "chip tiny", label);
+    chip.type = "button";
+    chip.setAttribute("aria-pressed", String(value === current));
+    chip.addEventListener("click", () => {
+      remember("theme", value);
+      applyTheme(value);
+      renderThemes();
+    });
+    return chip;
+  }));
+}
+
 function renderPrograms(programs) {
   state.programs = programs;
   $("programs").replaceChildren(...Object.entries(programs).map(([key, entry]) => {
@@ -1391,6 +1446,7 @@ async function start() {
     api("/api/reveal", { path: initial.output }).catch(() => {}));
   state.revealButton = reveal;
 
+  renderThemes();
   renderKinds();
   renderPrograms(initial.programs);
   renderInstallOffer(initial.installable);

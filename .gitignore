@@ -10,3 +10,6 @@ downloads/
 # Build output. ./build.sh remakes all of it from what is committed.
 build/
 dist/
+
+# Scratch from tools/shoot.py; the screenshots themselves are committed.
+docs/screens/.page/
