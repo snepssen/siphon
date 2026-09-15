@@ -234,11 +234,27 @@ class Queue:
                 # must be copied out, never moved, and never written over.
                 produced_is_original = bool(item.path) and not item.url
             else:
-                produced = engine.run(
-                    plan, source_path, workdir / f"out.{plan.suffix}",
-                    on_progress=lambda u: self._progress(job, u),
-                    should_cancel=lambda: job.id in self._cancelled,
-                )
+                try:
+                    produced = engine.run(
+                        plan, source_path, workdir / f"out.{plan.suffix}",
+                        on_progress=lambda u: self._progress(job, u),
+                        should_cancel=lambda: job.id in self._cancelled,
+                    )
+                except Exception:
+                    # The promise is that a cover is a nicety. If one is in
+                    # play, drop it and convert again before giving up —
+                    # losing the picture beats losing the download.
+                    if not artwork:
+                        raise
+                    job.note("the cover could not be embedded; "
+                             "converting without it")
+                    plan = engine.plan(source_path, target,
+                                       metadata=fetched_metadata, artwork=None)
+                    produced = engine.run(
+                        plan, source_path, workdir / f"out.{plan.suffix}",
+                        on_progress=lambda u: self._progress(job, u),
+                        should_cancel=lambda: job.id in self._cancelled,
+                    )
             # An engine may legitimately produce more than one file — a PDF
             # rendered to images is one per page. Taking only the first would
             # lose the rest to the working directory's cleanup, silently.
@@ -501,6 +517,27 @@ def _enrich(item):
     return item
 
 
+def _image_suffix(raw):
+    """What kind of picture this actually is, from its first bytes.
+
+    Guessing from the URL is not good enough and neither is assuming JPEG:
+    YouTube serves WebP thumbnails, and naming one `.jpg` made the converter
+    copy WebP bytes into an m4a as though they were JPEG. ffmpeg refused, and
+    a cover image took the whole download down with it.
+    """
+    if raw[:8] == b"\x89PNG\r\n\x1a\n":
+        return ".png"
+    if raw[:3] == b"\xff\xd8\xff":
+        return ".jpg"
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return ".webp"
+    if raw[:6] in (b"GIF87a", b"GIF89a"):
+        return ".gif"
+    if raw[4:12] in (b"ftypavif", b"ftypheic", b"ftypmif1"):
+        return ".heic"
+    return None
+
+
 def _artwork(item, workdir, target):
     """Cover art on disk, or None. Never a reason for a job to fail.
 
@@ -518,7 +555,9 @@ def _artwork(item, workdir, target):
         return None
     if not raw or len(raw) < 512:
         return None
-    suffix = ".png" if raw[:8] == b"\x89PNG\r\n\x1a\n" else ".jpg"
+    suffix = _image_suffix(raw)
+    if suffix is None:
+        return None           # not a picture; not worth guessing at
     path = Path(workdir) / f"cover{suffix}"
     path.parent.mkdir(parents=True, exist_ok=True)
     try:

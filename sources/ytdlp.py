@@ -53,6 +53,22 @@ _BASE_ARGS = (
 )
 
 
+def _token_args():
+    """Let yt-dlp use the local PO token provider, if one is running.
+
+    YouTube asks for a proof-of-not-a-robot token on some videos and not
+    others, and refuses quietly when it does not get one. yt-dlp manages
+    without today; when it stops managing, the provider is already here and
+    this is how it is reached. Absent one, this is an empty list and nothing
+    about the command changes.
+    """
+    try:
+        import pot_provider
+        return pot_provider.ytdlp_args()
+    except Exception:              # noqa: BLE001 — an improvement, never a blocker
+        return []
+
+
 def handles(target):
     return target.startswith("http://") or target.startswith("https://")
 
@@ -64,7 +80,8 @@ def handles(target):
 def expand(url, limit=None, playlist=True, **_options):
     """A URL in, one Item or many out. Nothing is downloaded."""
     binary = _binary()
-    argv = [binary, "--dump-single-json", "--no-warnings", *_BASE_ARGS]
+    argv = [binary, "--dump-single-json", "--no-warnings", *_BASE_ARGS,
+            *_token_args()]
     if playlist:
         # Flat means "list what is in it without opening each one", which is
         # the difference between two seconds and two minutes for a long list.
@@ -194,6 +211,7 @@ def fetch(item, target, workdir, on_progress=None, should_cancel=None,
             "-o", str(workdir / "%(id)s.%(ext)s"),
             "--no-warnings"]
     argv += _format_args(target)
+    argv += _token_args()
 
     cookies = options.get("cookies_from_browser")
     if cookies:

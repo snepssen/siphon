@@ -266,6 +266,76 @@ def ensure(on_line=None):
 
 
 # ---------------------------------------------------------------------------
+# yt-dlp
+# ---------------------------------------------------------------------------
+
+# bgutil ships a yt-dlp plugin alongside the server, so the same provider can
+# serve both downloaders. yt-dlp needs no bridge: its plugin asks properly.
+#
+# Worth having even though yt-dlp fetches YouTube fine today. YouTube demands
+# a token on some videos and not others, and the day it starts asking for all
+# of them, this is already here.
+
+_PLUGIN_ARG = "youtubepot-bgutilhttp:base_url"
+_availability = {"checked": 0.0, "ok": False}
+_AVAILABILITY_TTL = 30.0
+
+
+def plugin_dir():
+    """A directory holding just the plugin, for `--plugin-dirs`.
+
+    `--plugin-dirs DIR` iterates DIR's *children* and looks in each for a
+    `yt_dlp_plugins` package — so the argument is the parent of the plugin,
+    not the plugin. Passing the package itself gets "Plugin directories: none"
+    and no explanation. A directory of our own holding one symlink says what
+    is meant and keeps yt-dlp from stepping through bgutil's node_modules.
+    """
+    directory = paths.state_dir() / "yt-dlp-plugins"
+    link = directory / "bgutil"
+    source = home() / "plugin"
+    if not source.is_dir():
+        return None
+    directory.mkdir(parents=True, exist_ok=True)
+    try:
+        if link.is_symlink() and link.resolve() != source.resolve():
+            link.unlink()
+        if not link.exists():
+            link.symlink_to(source, target_is_directory=True)
+    except OSError:
+        return None
+    return directory
+
+
+def available(port=DEFAULT_PORT):
+    """Whether the server is up, asked at most twice a minute.
+
+    Cached because this is consulted on every yt-dlp invocation, and a
+    playlist is one invocation per track.
+    """
+    now = time.time()
+    if now - _availability["checked"] < _AVAILABILITY_TTL:
+        return _availability["ok"]
+    _availability["ok"] = installed() and running(port)
+    _availability["checked"] = now
+    return _availability["ok"]
+
+
+def ytdlp_args(port=DEFAULT_PORT):
+    """Arguments that let yt-dlp use this provider, or nothing at all.
+
+    Nothing when the server is down, so a yt-dlp run never waits on a service
+    that is not there — the tokens are an improvement, not a dependency.
+    """
+    if not available(port):
+        return []
+    directory = plugin_dir()
+    if directory is None:
+        return []
+    return ["--plugin-dirs", str(directory),
+            "--extractor-args", f"{_PLUGIN_ARG}={url(port)}"]
+
+
+# ---------------------------------------------------------------------------
 # The bridge
 # ---------------------------------------------------------------------------
 

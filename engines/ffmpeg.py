@@ -507,7 +507,12 @@ def _audio_codec_args(target, action):
 
 
 def _artwork_codec_args(artwork):
-    """Copy a JPEG straight in; re-wrap anything else as one."""
+    """Copy a JPEG straight in; re-encode anything else to one.
+
+    Only JPEG may be copied. Every container that carries cover art carries
+    JPEG, and nothing else can be assumed — a WebP copied in as though it were
+    a JPEG produces a file ffmpeg refuses to finish writing.
+    """
     suffix = str(artwork).lower().rsplit(".", 1)[-1]
     codec = ["-c:v", "copy"] if suffix in {"jpg", "jpeg"} else ["-c:v", "mjpeg"]
     return codec + ["-disposition:v:0", "attached_pic"]

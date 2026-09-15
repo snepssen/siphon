@@ -125,6 +125,75 @@ class TheBridge(unittest.TestCase):
         self.assertEqual(status, 200)
 
 
+class WiringItIntoYtDlp(unittest.TestCase):
+    """The provider serves yt-dlp too, and must never be able to break it."""
+
+    def test_the_plugin_dir_is_the_parent_of_the_package(self):
+        """`--plugin-dirs DIR` iterates DIR's children looking for
+        `yt_dlp_plugins`. Passing the package gets "Plugin directories: none"
+        and no explanation at all."""
+        directory = pot.plugin_dir()
+        if directory is None:
+            self.skipTest("the provider is not installed here")
+        children = [p.name for p in Path(directory).iterdir()]
+        self.assertTrue(children, "nothing for yt-dlp to find")
+        for child in children:
+            self.assertTrue((Path(directory) / child / "yt_dlp_plugins").is_dir(),
+                            f"{child} is not a plugin package")
+
+    def test_no_arguments_when_the_server_is_down(self):
+        """Tokens are an improvement, never a dependency: a yt-dlp run must
+        not wait on a service that is not running."""
+        original = pot.running
+        pot.running = lambda *a, **k: False
+        pot._availability["checked"] = 0.0
+        try:
+            self.assertEqual(pot.ytdlp_args(), [])
+        finally:
+            pot.running = original
+            pot._availability["checked"] = 0.0
+
+    def test_a_broken_provider_cannot_break_a_fetch(self):
+        from sources import ytdlp
+        import pot_provider
+        original = pot_provider.ytdlp_args
+        pot_provider.ytdlp_args = lambda *a, **k: (_ for _ in ()).throw(
+            RuntimeError("provider on fire"))
+        try:
+            self.assertEqual(ytdlp._token_args(), [])
+        finally:
+            pot_provider.ytdlp_args = original
+
+
+class ArtworkIsNeverWorthLosingADownloadOver(unittest.TestCase):
+    """YouTube serves WebP thumbnails, and one took down a whole job."""
+
+    def setUp(self):
+        import jobs
+        self.jobs = jobs
+
+    def test_each_kind_of_picture_is_named_for_what_it_is(self):
+        cases = {
+            b"\x89PNG\r\n\x1a\n" + b"0" * 32: ".png",
+            b"\xff\xd8\xff\xe0" + b"0" * 32: ".jpg",
+            b"RIFF\x16\x11\x02\x00WEBPVP8 " + b"0" * 32: ".webp",
+            b"GIF89a" + b"0" * 32: ".gif",
+        }
+        for raw, expected in cases.items():
+            self.assertEqual(self.jobs._image_suffix(raw), expected, expected)
+
+    def test_something_that_is_not_a_picture_is_declined(self):
+        """Guessing `.jpg` is what made ffmpeg copy WebP bytes as JPEG."""
+        self.assertIsNone(self.jobs._image_suffix(b"<!doctype html>" + b" " * 40))
+        self.assertIsNone(self.jobs._image_suffix(b""))
+
+    def test_only_jpeg_is_ever_copied_in(self):
+        from engines.ffmpeg import _artwork_codec_args
+        self.assertIn("copy", _artwork_codec_args("/tmp/cover.jpg"))
+        for other in ("/tmp/cover.webp", "/tmp/cover.png", "/tmp/cover.gif"):
+            self.assertIn("mjpeg", _artwork_codec_args(other), other)
+
+
 class WhereThingsLive(unittest.TestCase):
     def test_both_ports_are_loopback_only(self):
         self.assertTrue(pot.url().startswith("http://127.0.0.1"))

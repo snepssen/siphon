@@ -104,6 +104,18 @@ container, so a tagging step afterwards rewrites the whole file a second time.
 consequence to remember: a file that needed no conversion but does need tags
 becomes a `copy` rather than a `none`.
 
+**Identify a picture by its bytes, not its name or a default.** YouTube serves
+WebP thumbnails. siphon used to save anything that was not a PNG as `.jpg`,
+and `_artwork_codec_args` then copied WebP bytes into an m4a as though they
+were JPEG — ffmpeg refused to finish the file and a cover image took the whole
+download with it. `jobs._image_suffix` reads the magic bytes and returns None
+for things that are not pictures at all, and only JPEG is ever `-c:v copy`.
+
+**A cover is a nicety, and the code now says so twice.** Fetching one already
+failed softly; embedding one did not. `jobs._process` catches a conversion
+failure, and if artwork was in play, re-plans without it and converts again
+before giving up. Losing the picture beats losing the download.
+
 **Do not write metadata for local files.** `sources.local` fills in a title
 from the filename so the queue has something to display. Writing that back
 would overwrite a real title with a filename. `jobs._process` passes
@@ -187,8 +199,20 @@ somebody's afternoon:
 
 So do not spend another day on it. yt-dlp fetches YouTube perfectly and is
 unaffected; cobalt is for the sites where yt-dlp is the one having a bad week.
-The provider is still worth having — it works, and it is the same provider
-yt-dlp's own plugin uses if YouTube ever does start demanding tokens there.
+
+**yt-dlp uses the same provider, and needs no bridge** — its plugin asks
+properly. `pot_provider.ytdlp_args` returns the two arguments when the server
+is up and an empty list when it is not, so the tokens are an improvement and
+never a dependency. Two traps in that wiring:
+
+  * **`--plugin-dirs DIR` iterates DIR's *children*** and looks in each for a
+    `yt_dlp_plugins` package, so the argument is the plugin's parent, not the
+    plugin. Passing the package gets "Plugin directories: none" and no
+    explanation whatsoever. `plugin_dir()` keeps a directory of our own with
+    one symlink in it, which also stops yt-dlp stepping through bgutil's
+    node_modules.
+  * **Availability is cached for thirty seconds.** It is consulted on every
+    yt-dlp invocation, and a playlist is one invocation per track.
 
 **cobalt asks for tokens the way bgutil cannot answer.** cobalt's docs name
 imputnet's `yt-session-generator`, which serves `/token`; cobalt's code POSTs

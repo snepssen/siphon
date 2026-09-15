@@ -246,6 +246,18 @@ everything it pulled in. The buttons in Settings do the same thing.
 bridge, because cobalt cannot mint YouTube's `poToken` itself. `siphon cobalt
 tokens` shows their state.
 
+**yt-dlp uses that provider too**, automatically, whenever it is running —
+siphon loads bgutil's yt-dlp plugin and points it at the same server. YouTube
+asks for a token on some videos and not others, and refuses quietly when it
+does not get one; yt-dlp copes without today, and this is already in place for
+when it stops coping. With the server down, nothing changes and nothing waits
+on it.
+
+```sh
+siphon cobalt tokens start     # provider + bridge; yt-dlp picks it up too
+siphon cobalt tokens           # what is running
+```
+
 Two honest notes. cobalt's own native dependency does not build against the
 very newest Node, so siphon looks for an LTS one beside it (`brew install
 node@22`) and uses that for cobalt alone.
