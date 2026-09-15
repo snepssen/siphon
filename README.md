@@ -16,12 +16,28 @@ does, simply skipping the stage that fetches bytes — so converting an album
 you already own is the same gesture as downloading one.
 
 ```sh
+siphon                                # open the window
 siphon get https://…                  # best quality, nothing re-encoded
 siphon get https://… --as mp3         # fetch and make an mp3
 siphon get https://…/playlist --as m4a   # a playlist, tagged and foldered
 siphon convert album/ --as flac       # a folder already on this disk
 siphon list https://…/playlist        # show what is in it, fetch nothing
 ```
+
+## The window
+
+`siphon` on its own opens a page on `127.0.0.1`: paste a link, watch the queue,
+set your keys. It is the same queue the command line uses — a job started in
+the terminal appears in the window, and a job started in the window survives
+the window being closed.
+
+Paste a playlist and it shows you what is in it *before* fetching any of it,
+with the running time, so "Fetch all 1120" is a decision rather than an
+accident.
+
+The server binds the loopback address only and every request carries a token
+from the URL it opened at. Nothing on your network can reach it, and neither
+can a website you happen to have open in another tab.
 
 ## What it will not do
 

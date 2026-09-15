@@ -4,6 +4,7 @@
 The command line and the window are two views of the same queue, and neither
 knows anything the other does not. This file is the first of those views.
 
+    siphon                               open the window
     siphon get https://…                 fetch it, best quality, nothing re-encoded
     siphon get https://… --as mp3        fetch it and make an mp3
     siphon convert album/ --as flac      convert a folder already on this disk
@@ -309,6 +310,13 @@ def command_keys(args):
     return 0
 
 
+def command_window(args):
+    """Open the window. The queue is the same one the command line uses."""
+    import app
+    return app.serve(port=args.port, open_browser=not args.no_open,
+                     workers=args.workers)
+
+
 def command_plan(args):
     """Say what would be done to a file, and do none of it."""
     try:
@@ -372,6 +380,13 @@ def build_parser():
     plan.add_argument("--as", dest="format", default="mp3", metavar="FORMAT")
     plan.set_defaults(handler=command_plan)
 
+    window = sub.add_parser("window", help="open the window")
+    window.add_argument("--port", type=int, default=7788)
+    window.add_argument("--no-open", action="store_true",
+                        help="start the server without opening a browser")
+    window.add_argument("-j", "--workers", type=int, default=2)
+    window.set_defaults(handler=command_window)
+
     fmt = sub.add_parser("formats", help="list the target formats")
     fmt.set_defaults(handler=command_formats)
 
@@ -392,8 +407,10 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "handler", None):
-        parser.print_help()
-        return 0
+        # No command means the window. Somebody who types `siphon` and gets a
+        # wall of usage has been told to go away by the thing they just opened.
+        import app
+        return app.serve()
     try:
         return args.handler(args)
     except KeyboardInterrupt:

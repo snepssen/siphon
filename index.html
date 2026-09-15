@@ -1,0 +1,611 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>siphon</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f6f4; --panel: #ffffff; --ink: #16181c; --quiet: #5d646e;
+    --line: #dcdfe4; --fail: #b3261e; --warn: #8a5a00; --pass: #1c6b3f;
+    --accent: #1f5fbf; --code: #f0f1f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c; --panel: #1e2127; --ink: #e8eaee; --quiet: #99a1ad;
+      --line: #313640; --fail: #ff8a80; --warn: #f0b849; --pass: #6fd39a;
+      --accent: #7aa7ff; --code: #14161a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 60px; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+          "DejaVu Sans", sans-serif;
+  }
+  main { max-width: 780px; margin: 0 auto; }
+  h1 { font-size: 19px; margin: 0 0 2px; letter-spacing: -0.01em; }
+  h2 { font-size: 14px; margin: 0 0 12px; font-weight: 600; }
+  .sub { color: var(--quiet); font-size: 13px; margin: 0 0 22px; }
+  .head { display: flex; align-items: baseline; gap: 12px; }
+  .head .spacer { flex: 1; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px; margin-bottom: 16px;
+  }
+  .drop {
+    border: 1.5px dashed var(--line); border-radius: 8px; padding: 22px 18px;
+    text-align: center; transition: border-color .15s, background .15s;
+  }
+  .drop.over { border-color: var(--accent);
+               background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .row label { font-size: 13px; color: var(--quiet); }
+  select, input[type=text], input[type=password], button, textarea {
+    font: inherit; color: var(--ink); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px;
+  }
+  input[type=text], input[type=password] {
+    flex: 1; min-width: 200px; font-size: 13px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.quiet { border-color: transparent; background: transparent; color: var(--quiet);
+                 padding: 4px 7px; font-size: 12.5px; }
+  button.quiet:hover:not(:disabled) { color: var(--ink); border-color: var(--line); }
+  .note { font-size: 12.5px; color: var(--quiet); margin-top: 8px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          font-size: 12.5px; word-break: break-all; }
+
+  .job { border-top: 1px solid var(--line); padding: 12px 0; }
+  .job:first-child { border-top: 0; padding-top: 2px; }
+  .job .title { display: flex; gap: 10px; align-items: baseline; }
+  .job .title strong { font-weight: 500; font-size: 14px; flex: 1;
+                       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job .state { font-size: 12px; color: var(--quiet); white-space: nowrap; }
+  .job .msg { font-size: 12.5px; color: var(--quiet); margin-top: 3px; }
+  .job .msg.bad { color: var(--fail); }
+  .job .acts { display: flex; gap: 4px; }
+  .track { height: 4px; border-radius: 2px; background: var(--line);
+           margin-top: 8px; overflow: hidden; }
+  .track > i { display: block; height: 100%; background: var(--accent);
+               width: 0; transition: width .2s linear; }
+  .track.done > i { background: var(--pass); }
+  .track.bad > i { background: var(--fail); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--quiet);
+         display: inline-block; flex: 0 0 auto; }
+  .dot.running { background: var(--accent); }
+  .dot.done { background: var(--pass); }
+  .dot.failed { background: var(--fail); }
+
+  ol.items { margin: 0; padding: 0 0 0 26px; max-height: 260px; overflow-y: auto;
+             font-size: 13px; color: var(--quiet); }
+  ol.items li { padding: 1px 0; }
+  ol.items li b { font-weight: 500; color: var(--ink); }
+
+  .svc { border-top: 1px solid var(--line); padding: 14px 0; }
+  .svc:first-of-type { border-top: 0; }
+  .svc .why { font-size: 13px; color: var(--quiet); margin: 2px 0 10px; }
+  .svc ol { font-size: 12.5px; color: var(--quiet); margin: 8px 0 0; padding-left: 20px; }
+  .svc ol li { margin-bottom: 4px; }
+  .field { display: flex; gap: 8px; align-items: center; margin-bottom: 7px; }
+  .field label { font-size: 12.5px; color: var(--quiet); width: 108px; flex: 0 0 auto; }
+  .ok { color: var(--pass); } .missing { color: var(--quiet); }
+  .prog { display: flex; gap: 10px; font-size: 12.5px; padding: 3px 0; }
+  .prog .n { width: 76px; color: var(--quiet); }
+  [hidden] { display: none !important; }
+  .flash { font-size: 13px; padding: 9px 12px; border-radius: 7px; margin-bottom: 12px;
+           background: color-mix(in srgb, var(--fail) 12%, transparent); color: var(--fail); }
+  .flash.info { background: color-mix(in srgb, var(--accent) 12%, transparent);
+                color: var(--accent); }
+</style>
+
+<main>
+  <div class="head">
+    <div>
+      <h1>siphon</h1>
+      <p class="sub" id="where">—</p>
+    </div>
+    <div class="spacer"></div>
+    <button class="quiet" id="toggle-settings">Settings</button>
+  </div>
+
+  <div id="flash" class="flash" hidden></div>
+
+  <!-- ---------------------------------------------------------------- -->
+  <section class="panel" id="add-panel">
+    <div class="drop" id="drop">
+      <div class="row" style="margin:0">
+        <input type="text" id="url" autofocus
+               placeholder="Paste a link, or the path to a file or folder">
+        <select id="format"></select>
+        <button class="primary" id="go">Add</button>
+      </div>
+      <p class="note" id="format-note">—</p>
+    </div>
+    <p class="note">
+      A link or a path — both go the same way. Dragging a file in from Finder
+      works too.
+    </p>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+  <section class="panel" id="preview" hidden>
+    <h2 id="preview-title">—</h2>
+    <!-- The buttons go above the list on purpose. The list has its own
+         scrollbar, so with a thousand items anything below it is unreachable
+         without scrolling past a screenful of titles first. -->
+    <div class="row" style="margin-top:0;margin-bottom:12px">
+      <button class="primary" id="preview-go">Fetch all</button>
+      <button id="preview-cancel">Never mind</button>
+    </div>
+    <ol class="items" id="preview-items"></ol>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+  <section class="panel" id="queue-panel" hidden>
+    <div class="head" style="margin-bottom:10px">
+      <h2 style="margin:0">Queue</h2>
+      <div class="spacer"></div>
+      <button class="quiet" id="forget">Clear finished</button>
+    </div>
+    <div id="queue"></div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+  <section class="panel" id="settings" hidden>
+    <h2>Programs</h2>
+    <div id="programs"></div>
+
+    <h2 style="margin-top:22px">Keys</h2>
+    <p class="note" style="margin-top:-6px" id="storage-note">—</p>
+    <div id="services"></div>
+
+    <h2 style="margin-top:22px">Needs nothing</h2>
+    <div id="free"></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+// The token is in this page's own address. Every call carries it; without it
+// the server answers nothing, which is what stops another tab driving this.
+const TOKEN = new URLSearchParams(location.search).get("t") || "";
+
+const $ = (id) => document.getElementById(id);
+const state = { jobs: [], formats: [], preview: null, output: "" };
+
+async function api(path, body) {
+  const options = {
+    method: body === undefined ? "GET" : "POST",
+    headers: { "X-Siphon-Token": TOKEN, "Content-Type": "application/json" },
+  };
+  if (body !== undefined) options.body = JSON.stringify(body);
+  const response = await fetch(path, options);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
+  return payload;
+}
+
+function flash(message, kind = "error") {
+  const box = $("flash");
+  if (!message) { box.hidden = true; return; }
+  box.textContent = message;
+  // "Still looking" is not a failure, and colouring it like one teaches people
+  // to ignore the place real failures appear.
+  box.classList.toggle("info", kind === "info");
+  box.hidden = false;
+}
+
+// ---------------------------------------------------------------------------
+// Formatting
+// ---------------------------------------------------------------------------
+
+function size(bytes) {
+  if (!bytes) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let n = bytes, i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i += 1; }
+  return `${i === 0 ? Math.round(n) : n.toFixed(1)} ${units[i]}`;
+}
+
+function clock(seconds) {
+  if (seconds === null || seconds === undefined) return "";
+  seconds = Math.round(seconds);
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+  return `${Math.floor(seconds / 3600)}h ${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}m`;
+}
+
+function longClock(seconds) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  if (days) return `${days}d ${hours}h of media`;
+  if (hours) return `${hours}h ${Math.floor((seconds % 3600) / 60)}m of media`;
+  return `${Math.round(seconds / 60)}m of media`;
+}
+
+const STAGE = { resolve: "looking up", fetch: "fetching", convert: "converting",
+                tag: "tagging", place: "filing" };
+
+function itemName(item) {
+  if (item.artist && item.title) return `${item.artist} — ${item.title}`;
+  return item.title || item.url || item.path || "untitled";
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
+function render() {
+  const jobs = state.jobs;
+  $("queue-panel").hidden = jobs.length === 0;
+  const queue = $("queue");
+  queue.replaceChildren(...jobs.slice().reverse().map(renderJob));
+}
+
+function renderJob(job) {
+  const node = document.createElement("div");
+  node.className = "job";
+
+  const running = job.state === "running";
+  const failed = job.state === "failed";
+  const done = job.state === "done";
+
+  const title = document.createElement("div");
+  title.className = "title";
+
+  const dot = document.createElement("span");
+  dot.className = `dot ${job.state}`;
+  const name = document.createElement("strong");
+  name.textContent = itemName(job.item);
+  const stateLabel = document.createElement("span");
+  stateLabel.className = "state";
+  stateLabel.textContent = running
+    ? (STAGE[job.stage] || "starting")
+    : job.state === "queued" ? "waiting" : job.state;
+
+  const acts = document.createElement("div");
+  acts.className = "acts";
+  if (done && job.output_path) acts.append(button("Show", () =>
+    api("/api/reveal", { path: job.output_path })));
+  if (running || job.state === "queued") acts.append(button("Stop", () =>
+    api("/api/cancel", { id: job.id })));
+  if (failed || job.state === "cancelled") acts.append(button("Try again", () =>
+    api("/api/retry", { id: job.id })));
+
+  title.append(dot, name, stateLabel, acts);
+
+  const message = document.createElement("div");
+  message.className = failed ? "msg bad" : "msg";
+  message.textContent = job.message || "";
+
+  node.append(title, message);
+
+  if (running) {
+    const track = document.createElement("div");
+    track.className = "track";
+    const bar = document.createElement("i");
+    bar.style.width = `${Math.round((job.progress || 0) * 100)}%`;
+    track.append(bar);
+    node.append(track);
+
+    const bits = [];
+    if (job.bytes_total) bits.push(`${size(job.bytes_done)} of ${size(job.bytes_total)}`);
+    if (job.speed) bits.push(`${(job.speed / 1e6).toFixed(1)} MB/s`);
+    if (job.eta) bits.push(`${clock(job.eta)} left`);
+    if (bits.length) {
+      const detail = document.createElement("div");
+      detail.className = "msg";
+      detail.textContent = bits.join(" · ");
+      node.append(detail);
+    }
+  }
+  return node;
+}
+
+function button(label, handler) {
+  const element = document.createElement("button");
+  element.className = "quiet";
+  element.textContent = label;
+  element.addEventListener("click", async () => {
+    element.disabled = true;
+    try { await handler(); } catch (error) { flash(error.message); }
+    element.disabled = false;
+  });
+  return element;
+}
+
+// ---------------------------------------------------------------------------
+// Adding
+// ---------------------------------------------------------------------------
+
+async function submit() {
+  const url = $("url").value.trim();
+  if (!url) return;
+  flash("");
+  const go = $("go");
+  go.disabled = true;
+  go.textContent = "Looking…";
+  // Enumerating a whole channel is a minute's work at the far end. Saying so
+  // is the difference between waiting and wondering whether it has hung.
+  const patience = setTimeout(() => {
+    flash("Still looking. A whole channel can take a minute to list.", "info");
+  }, 4000);
+  try {
+    const found = await api("/api/expand", { url });
+    clearTimeout(patience);
+    flash("");
+    if (found.count === 1) {
+      await api("/api/add", { items: found.items, format: $("format").value });
+      $("url").value = "";
+    } else if (found.count > 1) {
+      showPreview(found);
+    } else {
+      flash("Nothing to fetch there.");
+    }
+  } catch (error) {
+    flash(error.message);
+  } finally {
+    clearTimeout(patience);
+    go.disabled = false;
+    go.textContent = "Add";
+  }
+}
+
+function showPreview(found) {
+  state.preview = found;
+  // The running time is the honest unit here. "1120 items" sounds like a
+  // list; "six days of video" is what clicking Fetch all actually means.
+  const total = found.items.reduce((sum, item) => sum + (item.duration || 0), 0);
+  const parts = [`${found.count} items`];
+  if (total > 0) parts.push(longClock(total));
+  $("preview-title").textContent =
+    `${found.collection || "That link"} — ${parts.join(" · ")}`;
+  $("preview-items").replaceChildren(...found.items.map((item) => {
+    const li = document.createElement("li");
+    const b = document.createElement("b");
+    b.textContent = itemName(item);
+    li.append(b);
+    if (item.duration) li.append(`  ${clock(item.duration)}`);
+    return li;
+  }));
+  $("preview-go").textContent = `Fetch all ${found.count}`;
+  $("preview").hidden = false;
+}
+
+function hidePreview() {
+  state.preview = null;
+  $("preview").hidden = true;
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+function renderPrograms(programs) {
+  const rows = Object.entries(programs).map(([key, entry]) => {
+    const row = document.createElement("div");
+    row.className = "prog";
+    const name = document.createElement("span");
+    name.className = "n";
+    name.textContent = key;
+    const detail = document.createElement("span");
+    if (entry.present) {
+      detail.className = "ok";
+      detail.textContent = `✓ ${entry.version || entry.path}`;
+    } else {
+      detail.className = "missing";
+      detail.textContent = entry.required
+        ? `✗ needed for ${entry.purpose} — ${entry.install}`
+        : `– optional, for ${entry.purpose} — ${entry.install}`;
+    }
+    row.append(name, detail);
+    return row;
+  });
+  $("programs").replaceChildren(...rows);
+}
+
+async function renderSettings() {
+  const settings = await api("/api/settings");
+  $("storage-note").textContent = `Kept in ${settings.storage}. Never printed, never sent anywhere but to the service it belongs to.`;
+
+  $("services").replaceChildren(...settings.services.map((service) => {
+    const box = document.createElement("div");
+    box.className = "svc";
+
+    const heading = document.createElement("h2");
+    heading.style.margin = "0";
+    heading.textContent = `${service.complete ? "✓ " : ""}${service.label}`;
+    const why = document.createElement("p");
+    why.className = "why";
+    why.textContent = service.why;
+    box.append(heading, why);
+
+    for (const field of service.fields) {
+      const row = document.createElement("div");
+      row.className = "field";
+      const label = document.createElement("label");
+      label.textContent = field.label;
+      const input = document.createElement("input");
+      input.type = field.secret ? "password" : "text";
+      input.placeholder = field.set ? field.hint : (field.placeholder || "not set");
+      const save = button("Save", async () => {
+        if (!input.value.trim()) return;
+        await api("/api/settings", {
+          service: service.key, field: field.key, value: input.value.trim(),
+        });
+        input.value = "";
+        await renderSettings();
+      });
+      save.className = "";
+      row.append(label, input, save);
+      box.append(row);
+    }
+
+    if (service.steps.length) {
+      const link = document.createElement("p");
+      link.className = "note";
+      const anchor = document.createElement("a");
+      anchor.href = service.url;
+      anchor.target = "_blank";
+      anchor.rel = "noreferrer";
+      anchor.textContent = service.url;
+      link.append("Where to find it — ", anchor);
+      const steps = document.createElement("ol");
+      steps.replaceChildren(...service.steps.map((step) => {
+        const li = document.createElement("li");
+        li.textContent = step;
+        return li;
+      }));
+      box.append(link, steps);
+    }
+    return box;
+  }));
+
+  $("free").replaceChildren(...Object.entries(settings.no_setup_needed).map(
+    ([name, sentence]) => {
+      const row = document.createElement("div");
+      row.className = "prog";
+      const label = document.createElement("span");
+      label.className = "n";
+      label.textContent = name;
+      const text = document.createElement("span");
+      text.className = "missing";
+      text.textContent = sentence;
+      row.append(label, text);
+      return row;
+    }));
+}
+
+// ---------------------------------------------------------------------------
+// Dropping files
+// ---------------------------------------------------------------------------
+
+function pathFromDrop(event) {
+  // Finder hands over a file:// URL in text/uri-list. That is the only way a
+  // browser will tell a page where a dropped file actually lives — the File
+  // object it also provides has a name and no path at all, which is no use to
+  // a tool whose whole job is to read the file from disk.
+  const uri = event.dataTransfer.getData("text/uri-list")
+           || event.dataTransfer.getData("text/plain");
+  if (!uri) return null;
+  const first = uri.split("\n")[0].trim();
+  if (first.startsWith("file://")) {
+    try { return decodeURIComponent(new URL(first).pathname); }
+    catch { return null; }
+  }
+  return first;
+}
+
+function wireDrop() {
+  const zone = $("drop");
+  for (const name of ["dragenter", "dragover"]) {
+    zone.addEventListener(name, (event) => {
+      event.preventDefault();
+      zone.classList.add("over");
+    });
+  }
+  for (const name of ["dragleave", "drop"]) {
+    zone.addEventListener(name, () => zone.classList.remove("over"));
+  }
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    const path = pathFromDrop(event);
+    if (path) {
+      $("url").value = path;
+      submit();
+    } else {
+      flash("That drop carried no path. Paste the file's path instead — " +
+            "in Finder, ⌥⌘C copies it.");
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Live updates
+// ---------------------------------------------------------------------------
+
+function listen() {
+  const stream = new EventSource(`/api/events?t=${encodeURIComponent(TOKEN)}`);
+  stream.onmessage = (event) => {
+    try {
+      state.jobs = JSON.parse(event.data).jobs || [];
+      render();
+    } catch { /* a malformed frame is not worth breaking the page over */ }
+  };
+  stream.onerror = () => {
+    // The server went away, or the laptop slept. Close this one and try again
+    // shortly rather than leaving a dead stream that looks alive.
+    stream.close();
+    setTimeout(listen, 2000);
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
+
+async function start() {
+  const initial = await api("/api/state");
+  state.jobs = initial.jobs;
+  state.formats = initial.formats;
+  state.output = initial.output;
+
+  $("where").textContent = `Files go to ${initial.output}`;
+
+  const picker = $("format");
+  picker.replaceChildren(...initial.formats.map((format) => {
+    const option = document.createElement("option");
+    option.value = format.name;
+    option.textContent = format.name;
+    option.dataset.summary = format.summary;
+    return option;
+  }));
+  picker.value = initial.default_format;
+  const describe = () => {
+    $("format-note").textContent =
+      picker.selectedOptions[0]?.dataset.summary || "";
+  };
+  picker.addEventListener("change", describe);
+  describe();
+
+  renderPrograms(initial.programs);
+  render();
+  listen();
+}
+
+$("go").addEventListener("click", submit);
+$("url").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") submit();
+});
+$("preview-cancel").addEventListener("click", hidePreview);
+$("preview-go").addEventListener("click", async () => {
+  const found = state.preview;
+  if (!found) return;
+  const go = $("preview-go");
+  go.disabled = true;
+  try {
+    await api("/api/add", { items: found.items, format: $("format").value });
+    $("url").value = "";
+    hidePreview();
+  } catch (error) {
+    flash(error.message);
+  }
+  go.disabled = false;
+});
+$("forget").addEventListener("click", () => api("/api/forget", {}).catch(() => {}));
+$("toggle-settings").addEventListener("click", async () => {
+  const panel = $("settings");
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) {
+    try { await renderSettings(); } catch (error) { flash(error.message); }
+  }
+});
+
+wireDrop();
+start().catch((error) => flash(error.message));
+</script>

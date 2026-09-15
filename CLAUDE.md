@@ -83,6 +83,26 @@ would overwrite a real title with a filename. `jobs._process` passes
 `metadata=None` for anything that came off this disk; ffmpeg then carries the
 existing tags across by itself, which is what you want.
 
+**The window is a window, not a service.** `app.py` binds the loopback
+address only, and every request carries a token minted at startup and handed
+to the browser in the URL. Loopback on its own is not a boundary: any page in
+any tab can POST to 127.0.0.1, and this server writes files to disk. The token
+plus the Origin and Host checks in `_authorised` are what stop a website you
+happen to have open from queueing downloads on your machine. Do not add a
+`--host` flag.
+
+**`print` block-buffers when stdout is not a terminal.** The address the
+window opens at is the one line somebody needs, and a launcher that pipes the
+output would show nothing at all until the server stopped. Every startup print
+in `app.py` passes `flush=True`.
+
+**A browser will not tell a page where a dropped file lives** — except in
+`text/uri-list`, which Finder does populate with a `file://` URL. The `File`
+object the browser also hands over has a name and no path, which is useless to
+a tool whose job is to read the file from disk. `pathFromDrop` decodes the
+URI; there is no fallback that could work, so the failure case says "paste the
+path instead" and names the Finder shortcut for copying one.
+
 **Drain both pipes.** `_stream` in both `sources/ytdlp.py` and
 `engines/ffmpeg.py` reads stdout in the main thread and stderr in another. A
 pipe nobody is reading fills at 64 KB and the child blocks writing to it,
@@ -113,8 +133,9 @@ cannot yet handle should be a new module in `engines/` and one line in
 
 - **Phase 1, done.** Queue, pipeline, yt-dlp source, local source, ffmpeg
   engine, credentials store, CLI, tests.
-- **Phase 2.** The `127.0.0.1` window: drag-and-drop, live queue, format
-  picker, and the settings page `credentials.status()` already produces.
+- **Phase 2, done.** The `127.0.0.1` window: live queue over server-sent
+  events, playlist preview before committing, settings page generated from
+  `credentials.status()`, drag-and-drop.
 - **Phase 3.** Music. Deezer first (its API needs no key), then Spotify, then
   Tidal; `resolve.py` to match a catalogue track to a fetchable source by
   ISRC, then by artist/title/duration; artwork embedding.

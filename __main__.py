@@ -9,12 +9,20 @@ import sys
 
 
 def main():
-    import siphon
-    # A bare URL is the overwhelmingly common case, and making people type
-    # `get` in front of it would be a small tax on every single use.
     argv = sys.argv[1:]
-    if argv and (argv[0].startswith("http://") or argv[0].startswith("https://")):
+
+    # Nothing at all opens the window. That is what somebody double-clicking
+    # the archive means, and it is the only thing they can mean.
+    if not argv:
+        import app
+        return app.main([])
+
+    # A bare URL is the overwhelmingly common case on the command line, and
+    # making people type `get` in front of it would be a tax on every use.
+    if argv[0].startswith("http://") or argv[0].startswith("https://"):
         argv = ["get", *argv]
+
+    import siphon
     return siphon.main(argv)
 
 
