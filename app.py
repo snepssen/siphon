@@ -83,7 +83,7 @@ def _asset(name):
 
 def _broadcast(queue):
     """Wake every open page. Slow or dead ones are dropped, not waited for."""
-    payload = json.dumps({"jobs": queue.snapshot()})
+    payload = json.dumps({"jobs": queue.snapshot(), "paused": queue.paused})
     with _listeners_lock:
         listeners = list(_listeners)
     for listener in listeners:
@@ -239,6 +239,13 @@ class Handler(BaseHTTPRequestHandler):
             if route == "/api/forget":
                 _queue.forget_finished()
                 return self._json({"ok": True})
+            if route == "/api/pause":
+                return self._json({"paused": _queue.pause()})
+            if route == "/api/resume":
+                _queue.resume()
+                return self._json({"paused": False})
+            if route == "/api/stop-all":
+                return self._json({"stopped": _queue.stop_all()})
             if route == "/api/settings":
                 return self._json(self._settings(body))
             if route == "/api/install":
@@ -264,6 +271,7 @@ class Handler(BaseHTTPRequestHandler):
         return {
             "version": VERSION,
             "jobs": _queue.snapshot(),
+            "paused": _queue.paused,
             "formats": [
                 {"name": name, "summary": target.summary, "kind": target.kind,
                  # What can be adjusted on this preset, so the window can draw
@@ -405,7 +413,7 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             self.wfile.write(
-                f"data: {json.dumps({'jobs': _queue.snapshot()})}\n\n".encode()
+                f"data: {json.dumps({'jobs': _queue.snapshot(), 'paused': _queue.paused})}\n\n".encode()
             )
             self.wfile.flush()
             while True:

@@ -55,6 +55,7 @@ class Queue:
         self._wake = threading.Condition(self._lock)
         self._threads = []
         self._running = False
+        self._paused = False
         self._cancelled = set()
         self._last_notify = 0.0
 
@@ -128,11 +129,17 @@ class Queue:
         self._threads = []
 
     def drain(self, timeout=None):
-        """Block until nothing is queued or running. Returns True if it did."""
+        """Block until nothing is queued or running. Returns True if it did.
+
+        A paused queue counts as drained once nothing is still running —
+        otherwise waiting on one that will never start anything is a hang
+        rather than an answer.
+        """
         deadline = time.time() + timeout if timeout else None
         while True:
             with self._lock:
-                busy = bool(self._pending) or any(
+                pending = bool(self._pending) and not self._paused
+                busy = pending or any(
                     j.state == model.RUNNING for j in self._jobs.values()
                 )
             if not busy:
@@ -141,10 +148,45 @@ class Queue:
                 return False
             time.sleep(0.1)
 
+    # -- pausing ---------------------------------------------------------
+
+    @property
+    def paused(self):
+        return self._paused
+
+    def pause(self):
+        """Stop starting new work. What is already running is left to finish.
+
+        Not a pause of the downloads themselves. Suspending yt-dlp mid-request
+        would leave a socket open against a server that will time it out, and
+        "resume" would then mean a stall rather than a resumption. Letting the
+        current jobs finish is the honest version, and the window says so.
+        """
+        with self._lock:
+            self._paused = True
+        self._save()
+        self._notify(force=True)
+        return True
+
+    def resume(self):
+        with self._lock:
+            self._paused = False
+            self._wake.notify_all()
+        self._save()
+        self._notify(force=True)
+        return True
+
+    def stop_all(self):
+        """Cancel everything queued or running. Returns how many were stopped."""
+        targets = [j for j in self.all() if not j.finished]
+        for job in targets:
+            self.cancel(job.id)
+        return len(targets)
+
     def _work(self):
         while True:
             with self._lock:
-                while self._running and not self._pending:
+                while self._running and (self._paused or not self._pending):
                     self._wake.wait(timeout=0.5)
                 if not self._running:
                     return
@@ -467,13 +509,15 @@ class Queue:
         counts = {}
         for job in self.all():
             counts[job.state] = counts.get(job.state, 0) + 1
+        counts["paused"] = self._paused
         return counts
 
     # -- persistence -----------------------------------------------------
 
     def _save(self):
         try:
-            payload = {"version": 1, "jobs": self.snapshot()}
+            payload = {"version": 1, "paused": self._paused,
+                       "jobs": self.snapshot()}
             tmp = self.state_path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=1)
@@ -490,6 +534,10 @@ class Queue:
             return 0
         restored = 0
         with self._lock:
+            # A queue paused before quitting stays paused. Silently resuming
+            # forty downloads somebody stopped on purpose is the worse
+            # surprise of the two, and the window says clearly that it is.
+            self._paused = bool(payload.get("paused"))
             for data in payload.get("jobs", []):
                 try:
                     job = Job.from_dict(data)

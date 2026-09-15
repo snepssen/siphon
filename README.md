@@ -33,7 +33,17 @@ the window being closed.
 
 Paste a playlist and it shows you what is in it *before* fetching any of it,
 with the running time, so "Fetch all 1120" is a decision rather than an
-accident.
+accident. A playlist then sits in the queue as one card — how many of how
+many, what is running, and one button to stop the lot — rather than as forty
+identical rows.
+
+The queue has its own controls. **Pause** stops new jobs starting and lets
+what is already running finish; it is not a pause of the downloads themselves,
+because suspending a request mid-flight leaves a socket the far end will time
+out, and "resume" would then mean a stall. A pause survives closing siphon,
+since silently resuming forty downloads somebody stopped on purpose is the
+worse surprise. **Stop** cancels everything unfinished, and **Clear** removes
+what has finished and leaves what has not.
 
 The server binds the loopback address only and every request carries a token
 from the URL it opened at. Nothing on your network can reach it, and neither

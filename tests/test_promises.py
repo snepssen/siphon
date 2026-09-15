@@ -323,6 +323,93 @@ class ABatchIsOneAddition(unittest.TestCase):
         self.assertEqual(created[0].item.collection, "An Album")
 
 
+class ControllingTheQueue(unittest.TestCase):
+    """Start, pause, stop and clear, and what each of them honestly means."""
+
+    def setUp(self):
+        import jobs as jobs_module
+        self.jobs_module = jobs_module
+        self.directory = tempfile.TemporaryDirectory()
+        self.state = Path(self.directory.name) / "queue.json"
+        self.queue = jobs_module.Queue(workers=1, state_path=self.state)
+
+    def tearDown(self):
+        self.queue.stop(wait=False)
+        self.directory.cleanup()
+
+    def _add(self, count=3):
+        return self.queue.add(
+            [Item(title=f"T{n}", path="/nonexistent/x.wav") for n in range(count)],
+            "mp3")
+
+    def test_a_paused_queue_starts_nothing(self):
+        self.queue.pause()
+        self._add()
+        self.queue.start()
+        self.assertTrue(self.queue.drain(timeout=5))
+        self.assertTrue(all(j.state == model.QUEUED for j in self.queue.all()))
+
+    def test_resuming_lets_it_go(self):
+        self.queue.pause()
+        self._add()
+        self.queue.start()
+        self.queue.drain(timeout=5)
+        self.queue.resume()
+        self.assertTrue(self.queue.drain(timeout=20))
+        self.assertTrue(all(j.finished for j in self.queue.all()))
+
+    def test_draining_a_paused_queue_answers_rather_than_hanging(self):
+        """Waiting on something that will never start is a hang, not a wait."""
+        self.queue.pause()
+        self._add()
+        self.queue.start()
+        self.assertTrue(self.queue.drain(timeout=5))
+
+    def test_stop_all_cancels_everything_unfinished(self):
+        self.queue.pause()
+        created = self._add(4)
+        stopped = self.queue.stop_all()
+        self.assertEqual(stopped, 4)
+        for job in created:
+            self.assertEqual(self.queue.get(job.id).state, model.CANCELLED)
+
+    def test_clearing_keeps_what_is_still_going(self):
+        """Clear is for finished work; it must not quietly drop live jobs."""
+        self.queue.pause()
+        created = self._add(3)
+        self.queue.cancel(created[0].id)
+        self.queue.forget_finished()
+        left = {j.id for j in self.queue.all()}
+        self.assertNotIn(created[0].id, left)
+        self.assertEqual(len(left), 2)
+
+    def test_a_pause_survives_being_closed(self):
+        """Silently resuming forty downloads somebody stopped is the worse
+        surprise of the two."""
+        self.queue.pause()
+        self._add()
+        self.queue.stop(wait=True, timeout=5)
+
+        reopened = self.jobs_module.Queue(workers=1, state_path=self.state)
+        reopened.load()
+        try:
+            self.assertTrue(reopened.paused)
+            reopened.start()
+            self.assertTrue(reopened.drain(timeout=5))
+            self.assertTrue(all(j.state == model.QUEUED for j in reopened.all()))
+        finally:
+            reopened.stop(wait=False)
+
+    def test_pausing_does_not_touch_what_is_already_running(self):
+        """It stops new work starting. Suspending a request mid-flight would
+        leave a socket the far end will time out, so resume would mean a
+        stall rather than a resumption."""
+        import inspect
+        source = inspect.getsource(self.jobs_module.Queue.pause)
+        self.assertIn("left to finish", source)
+        self.assertNotIn("SIGSTOP", source)
+
+
 class CredentialsAreNotLeaked(unittest.TestCase):
     def test_status_shows_only_the_last_four_characters(self):
         import credentials

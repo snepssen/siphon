@@ -192,6 +192,19 @@ button{font:inherit;cursor:pointer}
 .numbers{display:flex;gap:14px;font-size:12px;color:var(--faint);margin-top:6px;
          font-variant-numeric:tabular-nums}
 
+/* ---- the queue's own controls ------------------------------------------ */
+.queue-controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.paused-note{
+  display:flex;gap:8px;align-items:center;
+  padding:9px 16px;font-size:12.5px;
+  background:var(--warn-soft);color:var(--warn);
+  border-bottom:1px solid color-mix(in srgb,var(--warn) 24%,transparent);
+}
+.paused-note::before{
+  content:"";width:9px;height:11px;flex:0 0 auto;
+  border-left:3px solid currentColor;border-right:3px solid currentColor;
+}
+
 /* ---- a batch: one playlist, one card ----------------------------------- */
 .batch{border-top:1px solid var(--line-soft)}
 .batch:first-child{border-top:0}
@@ -365,7 +378,14 @@ pre.log{background:var(--sunk);border:1px solid var(--line);border-radius:9px;
       <h2>Queue</h2>
       <span class="pill" id="queue-count" hidden></span>
       <div class="spacer"></div>
-      <button class="btn ghost" id="forget">Clear finished</button>
+      <div class="queue-controls">
+        <button class="btn small" id="pause">Pause</button>
+        <button class="btn small danger" id="stop-all">Stop all</button>
+        <button class="btn ghost" id="forget">Clear</button>
+      </div>
+    </div>
+    <div class="paused-note" id="paused-note" hidden>
+      Paused — nothing new will start. Anything already running finishes.
     </div>
     <div id="queue"></div>
     <div class="empty" id="empty">
@@ -427,7 +447,7 @@ const state = { jobs: [], formats: [], kind: null, format: null,
                 open: new Set(), revealButton: null,
                 // The shape of the queue as last drawn, and the nodes making
                 // it up, so an update can patch instead of rebuild.
-                shape: null, nodes: new Map() };
+                shape: null, nodes: new Map(), paused: false };
 
 async function api(path, body) {
   const options = {
@@ -670,8 +690,24 @@ function render() {
     status.replaceChildren("Files go to ", state.revealButton);
   }
 
+  const finished = jobs.filter((j) => FINISHED.includes(j.state)).length;
   $("empty").hidden = jobs.length > 0;
-  $("forget").hidden = !jobs.some((j) => FINISHED.includes(j.state));
+  $("paused-note").hidden = !state.paused;
+
+  // The controls say what they will do to this queue as it stands, rather
+  // than sitting there greyed and identical whatever is happening.
+  const pause = $("pause");
+  pause.textContent = state.paused ? "Resume" : "Pause";
+  pause.classList.toggle("primary", state.paused);
+  pause.disabled = !state.paused && !active;
+
+  const stopAll = $("stop-all");
+  stopAll.hidden = !active;
+  stopAll.textContent = active > 1 ? `Stop all ${active}` : "Stop";
+
+  const forget = $("forget");
+  forget.hidden = !finished;
+  forget.textContent = active ? `Clear ${finished} finished` : "Clear";
   reconcile($("queue"), groupJobs(jobs));
 }
 
@@ -1318,6 +1354,7 @@ function listen() {
     // never updated — no error, no clue. A bug in our own drawing should be
     // loud.
     state.jobs = payload.jobs || [];
+    if ("paused" in payload) state.paused = payload.paused;
     render();
   };
   stream.onerror = () => {
@@ -1335,6 +1372,7 @@ function listen() {
 async function start() {
   const initial = await api("/api/state");
   state.jobs = initial.jobs;
+  state.paused = !!initial.paused;
   state.formats = initial.formats;
   state.output = initial.output;
   // What you picked last time is almost always what you want this time, and
@@ -1382,6 +1420,21 @@ $("preview-go").addEventListener("click", async () => {
   go.disabled = false;
 });
 $("forget").addEventListener("click", () => api("/api/forget", {}).catch(() => {}));
+$("pause").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await api(state.paused ? "/api/resume" : "/api/pause", {});
+  } catch (error) { flash(error.message); }
+  button.disabled = false;
+});
+$("stop-all").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try { await api("/api/stop-all", {}); }
+  catch (error) { flash(error.message); }
+  button.disabled = false;
+});
 $("install-all").addEventListener("click", async () => {
   const go = $("install-all");
   const log = $("install-log");

@@ -232,6 +232,14 @@ response" — a sentence that points at the token rather than at the request.
 `tests/test_tokens.py` pins both halves, including a transcription of cobalt's
 own validator so the shape is checked against what consumes it.
 
+**Pause is not a pause of the downloads.** It stops new jobs starting and
+lets the running ones finish. Suspending yt-dlp mid-request with SIGSTOP would
+leave a socket open against a server that will time it out, so "resume" would
+mean a stall rather than a resumption — the window says which of the two this
+is, and a test asserts the implementation has not quietly become the other
+one. `drain` treats a paused queue as drained once nothing is running, because
+waiting on something that will never start is a hang rather than a wait.
+
 **A control is only offered where it does something.** `formats.adjustable`
 decides what can be set on a given preset, and `describe_options` hands the
 window plain data to draw — the same trick the credentials page uses, so
