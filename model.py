@@ -113,6 +113,7 @@ class Job:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     item: Item = field(default_factory=Item)
     target: str = "video"          # a preset name from formats.PRESETS
+    options: dict = field(default_factory=dict)   # what was adjusted on it
     state: str = QUEUED
     stage: str = None
     progress: float = 0.0          # 0..1 within the current stage

@@ -166,6 +166,84 @@ class FormatFacts(unittest.TestCase):
             formats.resolve("realaudio")
 
 
+class AdjustingAFormat(unittest.TestCase):
+    """A preset is where a setting starts, not where it is stuck.
+
+    The rule that matters: a control is only offered where it does something.
+    A bitrate on FLAC or a resolution on an audio file would be a knob that
+    changes nothing, which is worse than no knob — somebody will set it and
+    then wonder why the file did not change.
+    """
+
+    def test_only_relevant_settings_are_offered(self):
+        offered = lambda name: {o.key for o in formats.adjustable(name)}
+        self.assertEqual(offered("mp3"), {"abitrate"})
+        self.assertEqual(offered("flac"), set(), "lossless has no bitrate")
+        self.assertEqual(offered("audio"), set(), "a copy has nothing to set")
+        self.assertEqual(offered("video"), {"height"})
+        self.assertEqual(offered("jpg"), {"quality", "max_edge", "dpi"})
+        self.assertEqual(offered("png"), {"max_edge", "dpi"},
+                         "lossless images have no quality")
+
+    def test_a_setting_is_written_onto_the_preset(self):
+        target = formats.apply_options("mp3", {"abitrate": "192k"})
+        self.assertEqual(target.abitrate, "192k")
+        self.assertEqual(target.container, "mp3", "the rest of it survives")
+
+    def test_a_setting_that_does_not_apply_is_ignored(self):
+        target = formats.apply_options("mp3", {"height": 720})
+        self.assertIsNone(target.height)
+
+    def test_numbers_arriving_as_text_are_taken(self):
+        """The window sends strings; the pipeline wants numbers."""
+        target = formats.apply_options("video", {"height": "1080"})
+        self.assertEqual(target.height, 1080)
+
+    def test_clearing_a_setting_is_possible(self):
+        target = formats.apply_options("web-image", {"max_edge": None})
+        self.assertIsNone(target.max_edge)
+
+    def test_a_setting_from_a_future_version_does_not_raise(self):
+        target = formats.apply_options("mp3", {"invented_later": 1})
+        self.assertEqual(target.abitrate, "320k")
+
+    def test_every_described_option_names_a_real_field(self):
+        for name in formats.PRESETS:
+            for described in formats.describe_options(name):
+                self.assertTrue(hasattr(formats.PRESETS[name], described["key"]),
+                                f"{name}.{described['key']} is not a Target field")
+                self.assertTrue(described["choices"], described["key"])
+
+
+class OptionsReachTheJob(unittest.TestCase):
+    def setUp(self):
+        import jobs as jobs_module
+        self.directory = tempfile.TemporaryDirectory()
+        self.queue = jobs_module.Queue(
+            workers=1, state_path=Path(self.directory.name) / "queue.json")
+
+    def tearDown(self):
+        self.queue.stop(wait=False)
+        self.directory.cleanup()
+
+    def test_the_job_carries_what_was_asked_for(self):
+        job = self.queue.add([Item(title="x", path="/tmp/x.wav")], "mp3",
+                             settings={"abitrate": "192k"})[0]
+        self.assertEqual(job.options, {"abitrate": "192k"})
+
+    def test_they_survive_being_written_to_disk(self):
+        job = self.queue.add([Item(title="x")], "mp3",
+                             settings={"abitrate": "128k"})[0]
+        restored = Job.from_dict(job.to_dict())
+        self.assertEqual(restored.options, {"abitrate": "128k"})
+
+    def test_no_settings_means_the_preset(self):
+        job = self.queue.add([Item(title="x")], "mp3")[0]
+        self.assertEqual(job.options, {})
+        self.assertEqual(formats.apply_options(job.target, job.options).abitrate,
+                         "320k")
+
+
 class Naming(unittest.TestCase):
     def test_a_collection_item_is_numbered_and_foldered(self):
         item = Item(title="Track", artist="Band", collection="Album",

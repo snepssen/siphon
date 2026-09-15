@@ -61,7 +61,7 @@ def plan(source_path, target, metadata=None, artwork=None):
         summary = "Rewrote the PDF smaller with Ghostscript."
     else:
         device = DEVICES[target.container]
-        resolution = 150
+        resolution = target.dpi or 150
         argv = common + [f"-sDEVICE={device}", f"-r{resolution}"]
         if device == "jpeg" and target.quality:
             argv += [f"-dJPEGQ={target.quality}"]

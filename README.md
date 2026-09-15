@@ -216,6 +216,24 @@ not installed yet.
 `audio` and `video` mean "whatever it already was, untouched". `web-image` is
 a JPEG with its longest side capped at 2000px.
 
+A preset is where a setting starts, not where it is stuck. Pick a format and
+the window offers what can be adjusted on it — a bitrate for a lossy audio
+format, a resolution for video, quality and a size cap for images, a rendering
+resolution for PDF pages — and the command line takes the same choices:
+
+```sh
+siphon get https://… --as mp3 --bitrate 192k
+siphon get https://… --as mp4 --height 1080
+siphon convert photos/ --as jpg --quality 82 --longest-side 2000
+siphon convert report.pdf --as png --dpi 300
+```
+
+Only the settings that mean something are offered. There is no bitrate on
+FLAC and no resolution on an audio file, because a control that changes
+nothing is worse than no control — somebody will set it and then wonder why
+the file did not change. A flag that does not apply says so rather than being
+quietly dropped.
+
 Images and documents go through the same pipeline everything else does, so
 `siphon convert photos/ --as web-image` works on a folder, and a PDF rendered
 to images gives you one file per page rather than a picture of page one.

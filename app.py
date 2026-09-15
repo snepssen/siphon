@@ -265,7 +265,10 @@ class Handler(BaseHTTPRequestHandler):
             "version": VERSION,
             "jobs": _queue.snapshot(),
             "formats": [
-                {"name": name, "summary": target.summary, "kind": target.kind}
+                {"name": name, "summary": target.summary, "kind": target.kind,
+                 # What can be adjusted on this preset, so the window can draw
+                 # the controls rather than knowing about formats itself.
+                 "options": formats.describe_options(target)}
                 for name, target in formats.PRESETS.items()
             ],
             "default_format": formats.DEFAULT_PRESET,
@@ -306,16 +309,18 @@ class Handler(BaseHTTPRequestHandler):
         """
         fmt = body.get("format") or formats.DEFAULT_PRESET
         output = body.get("output") or None
+        settings = body.get("options") or {}
 
         supplied = body.get("items")
         if supplied:
             items = [model.Item.from_dict(data) for data in supplied]
-            created = _queue.add(items, fmt, output=output)
+            created = _queue.add(items, fmt, output=output, settings=settings)
         else:
             target = (body.get("url") or "").strip()
             if not target:
                 raise ValueError("Nothing to add.")
-            created = _queue.add_url(target, fmt, output=output)
+            created = _queue.add_url(target, fmt, output=output,
+                                     settings=settings)
         return {"added": len(created), "jobs": [j.to_dict() for j in created]}
 
     def _install(self, body):

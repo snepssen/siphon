@@ -73,6 +73,9 @@ button{font:inherit;cursor:pointer}
            padding:5px 9px;font-size:12.5px}
 .btn.ghost:hover:not(:disabled){color:var(--ink);background:var(--raise)}
 .btn.small{padding:5px 10px;font-size:12.5px}
+.btn.danger{color:var(--fail);border-color:color-mix(in srgb,var(--fail) 35%,transparent)}
+.btn.danger:hover:not(:disabled){background:var(--fail-soft);
+                                 border-color:var(--fail)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
 
 /* ---- panels ------------------------------------------------------------ */
@@ -124,6 +127,17 @@ button{font:inherit;cursor:pointer}
 }
 .chip.unavailable{opacity:.5}
 .summary{font-size:12.5px;color:var(--muted);margin-top:11px;min-height:1.5em}
+
+/* One row per adjustable setting, drawn from what the server says the
+   format actually supports. */
+.opt-row{display:flex;gap:11px;align-items:baseline;margin-top:11px;
+         flex-wrap:wrap}
+.opt-label{font-size:12.5px;color:var(--muted);width:98px;flex:0 0 auto}
+.opt-choices{display:flex;gap:5px;flex-wrap:wrap;flex:1;min-width:0}
+.opt-note{font-size:12px;color:var(--faint);margin:5px 0 0 109px}
+.chip.tiny{padding:4px 9px;font-size:12px}
+.go-row{display:flex;gap:13px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.go-row .btn{padding:10px 20px;font-size:14px}
 .hint{font-size:12.5px;color:var(--faint);margin:12px 0 0}
 
 /* ---- the drop overlay: the whole window is the target ------------------ */
@@ -281,11 +295,11 @@ pre.log{background:var(--sunk);border:1px solid var(--line);border-radius:9px;
 [hidden]{display:none !important}
 
 @media (max-width:560px){
-  /* Wrapped, the button should span rather than float at the left edge
-     looking like an afterthought. */
   .field{flex-wrap:wrap}
   .field input{flex-basis:100%}
-  .field .btn{flex:1}
+  .go-row .btn{flex:1}
+  .opt-label{width:100%}
+  .opt-note{margin-left:0}
   .row .k{width:78px}
   .cred label{width:88px}
 }
@@ -321,13 +335,16 @@ pre.log{background:var(--sunk);border:1px solid var(--line);border-radius:9px;
       <div class="field">
         <input type="text" id="url" autofocus autocomplete="off" spellcheck="false"
                placeholder="Paste a link, or the path to a file or folder">
-        <button class="btn primary" id="go">Add</button>
       </div>
       <div class="kinds" id="kinds" role="tablist" aria-label="Kind of output"></div>
       <div class="chips" id="chips" role="group" aria-label="Format"></div>
       <p class="summary" id="summary">—</p>
-      <p class="hint">A link or a path — both go the same way. Dragging in from
-        Finder works too.</p>
+      <div id="options"></div>
+      <div class="go-row">
+        <button class="btn primary" id="go">Add to queue</button>
+        <p class="hint" style="margin:0">A link or a path — both go the same
+          way. Dragging in from Finder works too.</p>
+      </div>
     </div>
   </section>
 
@@ -536,6 +553,67 @@ function unavailableReason(format) {
   return null;
 }
 
+function renderOptions() {
+  // Generated from what the server says this format supports, so the window
+  // never has to know that FLAC has no bitrate or that audio has no height.
+  const chosen = state.formats.find((f) => f.name === state.format);
+  const box = $("options");
+  const options = chosen?.options || [];
+  if (!options.length) { box.replaceChildren(); return; }
+
+  const rows = [];
+  for (const option of options) {
+    const current = optionValue(option);
+    const row = el("div", "opt-row");
+    row.append(el("span", "opt-label", option.label));
+
+    const choices = el("div", "opt-choices");
+    for (const choice of option.choices) {
+      const chip = el("button", "chip tiny", choice.label);
+      chip.type = "button";
+      const selected = String(choice.value) === String(current);
+      chip.setAttribute("aria-pressed", String(selected));
+      chip.addEventListener("click", () => {
+        setOption(option.key, choice.value);
+        renderOptions();
+      });
+      choices.append(chip);
+    }
+    row.append(choices);
+    rows.push(row);
+    if (option.note) rows.push(el("p", "opt-note", option.note));
+  }
+  box.replaceChildren(...rows);
+}
+
+function optionValue(option) {
+  // What was chosen for this format last time, else what the preset says.
+  const stored = recall(`opt.${state.format}.${option.key}`);
+  if (stored !== null && stored !== undefined) {
+    return stored === "null" ? null : stored;
+  }
+  return option.current;
+}
+
+function setOption(key, value) {
+  remember(`opt.${state.format}.${key}`, value === null ? "null" : String(value));
+}
+
+function currentOptions() {
+  // Only the settings that differ from the preset are sent. A request that
+  // repeats the defaults is one that silently pins them, so a preset that
+  // improves later would not reach anybody who had opened this window once.
+  const chosen = state.formats.find((f) => f.name === state.format);
+  const settings = {};
+  for (const option of chosen?.options || []) {
+    const value = optionValue(option);
+    if (String(value) !== String(option.current)) {
+      settings[option.key] = value === "null" ? null : value;
+    }
+  }
+  return settings;
+}
+
 function renderChips() {
   const here = state.formats.filter((f) => f.kind === state.kind);
   $("chips").replaceChildren(...here.map((format) => {
@@ -557,6 +635,7 @@ function renderChips() {
   $("summary").textContent = chosen
     ? chosen.summary + (reason ? ` — ${reason}, see Settings` : "")
     : "";
+  renderOptions();
 }
 
 // ---------------------------------------------------------------------------
@@ -643,11 +722,24 @@ function setText(node, selector, text) {
   if (target && target.textContent !== text) target.textContent = text;
 }
 
+function jobShape(job) {
+  // Everything about a row except the numbers that tick. If none of this has
+  // changed, the row does not need redrawing — which is what keeps Cancel
+  // under the pointer while the bytes count up behind it.
+  return [job.state, job.stage, job.message, job.output_path,
+          !!job.choice, (job.extra_outputs || []).length,
+          job.item.match_confidence].join("\u0001");
+}
+
 function updateJob(node, job) {
-  // A job's own row changes shape when it changes state, so that part is
-  // redrawn — but into the element that is already on the page.
-  const fresh = renderJob(job, node);
-  if (fresh !== node) node.replaceChildren(...fresh.childNodes);
+  if (node.dataset.shape === jobShape(job)) {
+    const fill = node.querySelector(".track > i");
+    if (fill) fill.style.width = `${Math.round((job.progress || 0) * 100)}%`;
+    const numbers = node.querySelector(".numbers");
+    if (numbers) numbers.replaceChildren(...numberCells(job));
+    return;
+  }
+  renderJob(job, node);
 }
 
 function updateBatch(node, group) {
@@ -688,11 +780,16 @@ function updateBatch(node, group) {
     head.append(wanted);
   }
 
-  const list = node.querySelector(".batch-jobs");
+  let list = node.querySelector(".batch-jobs");
   if (open) {
-    const fresh = el("div", "batch-jobs");
-    fresh.replaceChildren(...jobs.map((job) => renderJob(job)));
-    if (list) list.replaceWith(fresh); else node.append(fresh);
+    if (!list) {
+      list = el("div", "batch-jobs");
+      list.replaceChildren(...jobs.map((job) => renderJob(job)));
+      node.append(list);
+    } else {
+      // Same reasoning as the top level: keep the rows, update them.
+      reconcile(list, jobs.map((job) => ({ single: job })));
+    }
   } else if (list) {
     list.remove();
   }
@@ -810,9 +907,11 @@ function batchBar(jobs, active, running, waiting, failed) {
 function batchActions(jobs, active, done) {
   const acts = el("div", "batch-acts");
   if (active.length) {
-    acts.append(button("Stop all", async () => {
+    const cancel = button(`Cancel ${active.length}`, async () => {
       for (const job of active) await api("/api/cancel", { id: job.id });
-    }));
+    });
+    cancel.className = "btn small danger";
+    acts.append(cancel);
   } else if (done && jobs[0].output_path) {
     acts.append(button("Show", () =>
       api("/api/reveal", { path: jobs[0].output_path })));
@@ -823,6 +922,7 @@ function batchActions(jobs, active, done) {
 function renderJob(job, into) {
   const node = into || el("div", "job");
   if (into) node.replaceChildren();
+  node.dataset.shape = jobShape(job);
   const running = job.state === "running";
   const asking = job.state === "waiting";
   const failed = job.state === "failed";
@@ -840,8 +940,13 @@ function renderJob(job, into) {
   const acts = el("div", "job-acts");
   if (done && job.output_path) acts.append(button("Show", () =>
     api("/api/reveal", { path: job.output_path })));
-  if (running || job.state === "queued") acts.append(button("Stop", () =>
-    api("/api/cancel", { id: job.id })));
+  if (running || job.state === "queued") {
+    // A quiet ghost button reads as secondary, and stopping a download that
+    // is eating the connection is not a secondary thing to want.
+    const cancel = button("Cancel", () => api("/api/cancel", { id: job.id }));
+    cancel.className = "btn small danger";
+    acts.append(cancel);
+  }
   if (asking) acts.append(button("Skip", () => api("/api/skip", { id: job.id })));
   if (failed || job.state === "cancelled") acts.append(button("Try again", () =>
     api("/api/retry", { id: job.id })));
@@ -951,7 +1056,8 @@ async function submit() {
     clearTimeout(patience);
     flash("");
     if (found.count === 1) {
-      await api("/api/add", { items: found.items, format: state.format });
+      await api("/api/add", { items: found.items, format: state.format,
+                              options: currentOptions() });
       $("url").value = "";
       $("url").focus();           // so the next paste needs no click
     } else if (found.count > 1) {
@@ -964,7 +1070,7 @@ async function submit() {
   } finally {
     clearTimeout(patience);
     go.disabled = false;
-    go.textContent = "Add";
+    go.textContent = "Add to queue";
   }
 }
 
@@ -1266,7 +1372,8 @@ $("preview-go").addEventListener("click", async () => {
   const go = $("preview-go");
   go.disabled = true;
   try {
-    await api("/api/add", { items: found.items, format: state.format });
+    await api("/api/add", { items: found.items, format: state.format,
+                            options: currentOptions() });
     $("url").value = "";
     hidePreview();
   } catch (error) {

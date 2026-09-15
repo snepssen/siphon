@@ -232,6 +232,24 @@ response" — a sentence that points at the token rather than at the request.
 `tests/test_tokens.py` pins both halves, including a transcription of cobalt's
 own validator so the shape is checked against what consumes it.
 
+**A control is only offered where it does something.** `formats.adjustable`
+decides what can be set on a given preset, and `describe_options` hands the
+window plain data to draw — the same trick the credentials page uses, so
+neither the window nor the CLI knows that FLAC has no bitrate. Adding a knob
+means adding an `Option` and saying which kinds it applies to; it should never
+mean editing `index.html`.
+
+Only settings that differ from the preset are sent. Repeating the defaults
+would pin them, so a preset improved later would never reach anybody who had
+opened the window once.
+
+**The queue is reconciled, not rebuilt.** Updates arrive several times a
+second, and redrawing the rows replaced the Cancel button between the
+mousedown and the click. Nodes are keyed by job and batch id and kept;
+`jobShape` is everything about a row *except* the numbers that tick, so a row
+is only redrawn when it genuinely changes. If you add something to a row that
+can change, add it to `jobShape` too, or it will not update.
+
 **Two engines claim images, and the order decides.** ImageMagick goes first
 and takes them when it is installed; ffmpeg picks up what is left when it is
 not. That is deliberate: ffmpeg converts PNG, JPEG, TIFF, BMP and GIF

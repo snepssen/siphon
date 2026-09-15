@@ -15,7 +15,7 @@ knowing what mp4 is allowed to hold, which is a fact about the format, not
 about ffmpeg.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 AUDIO = "audio"
 VIDEO = "video"
@@ -44,6 +44,7 @@ class Target:
     lossless: bool = False
     quality: int = None           # 1-100 for lossy images; None leaves it alone
     max_edge: int = None          # cap the longest side of an image
+    dpi: int = None               # how finely to render a PDF page
     extra: tuple = field(default_factory=tuple)   # raw ffmpeg args, escape hatch
 
     @property
@@ -158,29 +159,29 @@ PRESETS = {
 # rather than what will do it.
 PRESETS.update({
     "jpg": Target(
-        name="jpg", kind=IMAGE, container="jpg", quality=92,
+        name="jpg", kind=IMAGE, container="jpg", quality=92, dpi=150,
         summary="JPEG — the one every program on earth opens",
     ),
     "png": Target(
-        name="png", kind=IMAGE, container="png", lossless=True,
+        name="png", kind=IMAGE, container="png", lossless=True, dpi=150,
         summary="PNG — lossless, keeps transparency, larger files",
     ),
     "webp": Target(
-        name="webp", kind=IMAGE, container="webp", quality=88,
+        name="webp", kind=IMAGE, container="webp", quality=88, dpi=150,
         summary="WebP — about a third smaller than JPEG at the same quality "
                 "(needs ImageMagick; ffmpeg here can read it but not write it)",
     ),
     "tiff": Target(
-        name="tiff", kind=IMAGE, container="tiff", lossless=True,
+        name="tiff", kind=IMAGE, container="tiff", lossless=True, dpi=150,
         summary="TIFF — lossless, for print and archives",
     ),
     "gif": Target(
-        name="gif", kind=IMAGE, container="gif",
+        name="gif", kind=IMAGE, container="gif", dpi=150,
         summary="GIF — 256 colours, animates",
     ),
     "web-image": Target(
         name="web-image", kind=IMAGE, container="jpg", quality=82,
-        max_edge=2000,
+        max_edge=2000, dpi=150,
         summary="JPEG, longest side capped at 2000px — for putting on a page",
     ),
 })
@@ -264,6 +265,128 @@ def resolve(name):
         known = ", ".join(sorted(PRESETS))
         raise UnknownFormat(f"No format called {name!r}. Known: {known}")
     return PRESETS[key]
+
+
+# ---- what can be adjusted, and what the choices are ---------------------
+#
+# The same trick the credentials page uses: one table describes the controls,
+# and the window is generated from it. A preset is where a setting starts, not
+# where it is stuck — somebody who wants 192 kbps instead of 320 should not
+# have to learn a command line to say so.
+
+@dataclass(frozen=True)
+class Option:
+    key: str                      # the Target field this writes
+    label: str
+    choices: tuple                # (value, label) pairs; value None means "leave it"
+    note: str = ""
+
+    def default_for(self, target):
+        return getattr(target, self.key, None)
+
+
+BITRATE = Option(
+    key="abitrate", label="Bitrate",
+    choices=(("128k", "128k"), ("192k", "192k"), ("256k", "256k"),
+             ("320k", "320k")),
+    note="Higher is bigger. Above 256k the difference is hard to hear on most "
+         "equipment.",
+)
+
+RESOLUTION = Option(
+    key="height", label="Resolution",
+    choices=((None, "Best available"), (2160, "2160p"), (1440, "1440p"),
+             (1080, "1080p"), (720, "720p"), (480, "480p")),
+    note="Asking for less than the source means re-encoding; asking for the "
+         "best usually means copying.",
+)
+
+IMAGE_QUALITY = Option(
+    key="quality", label="Quality",
+    choices=((70, "70 — small"), (82, "82 — web"), (92, "92 — good"),
+             (100, "100 — maximum")),
+)
+
+LONGEST_EDGE = Option(
+    key="max_edge", label="Longest side",
+    choices=((None, "Leave as it is"), (4000, "4000px"), (2000, "2000px"),
+             (1200, "1200px"), (800, "800px")),
+    note="Only ever shrinks. Enlarging a photograph invents detail that was "
+         "never there.",
+)
+
+RENDER_DPI = Option(
+    key="dpi", label="Page resolution",
+    choices=((72, "72 dpi — screen"), (150, "150 dpi — reading"),
+             (300, "300 dpi — print"), (600, "600 dpi — archival")),
+    note="Used when the source is a PDF being rendered to images.",
+)
+
+
+def adjustable(target):
+    """The options that mean something for this target.
+
+    Deliberately narrow. Offering a bitrate for FLAC, or a resolution for an
+    audio file, is a control that does nothing — and a control that does
+    nothing is worse than no control, because somebody will set it and then
+    wonder why the file did not change.
+    """
+    target = resolve(target)
+    options = []
+    if target.kind == AUDIO:
+        # A copy has no bitrate to set, and a lossless format has no use for
+        # one either.
+        if target.acodec and not target.lossless:
+            options.append(BITRATE)
+    elif target.kind == VIDEO:
+        options.append(RESOLUTION)
+    elif target.kind == IMAGE:
+        if not target.lossless:
+            options.append(IMAGE_QUALITY)
+        options.append(LONGEST_EDGE)
+        options.append(RENDER_DPI)
+    return options
+
+
+def describe_options(target):
+    """The same thing as plain data, for the window to draw."""
+    target = resolve(target)
+    described = []
+    for option in adjustable(target):
+        current = option.default_for(target)
+        described.append({
+            "key": option.key,
+            "label": option.label,
+            "note": option.note,
+            "current": current,
+            "choices": [{"value": value, "label": label}
+                        for value, label in option.choices],
+        })
+    return described
+
+
+def apply_options(target, options):
+    """A preset with somebody's choices written over it.
+
+    Unknown keys are ignored rather than raising: a window from an older
+    version asking for a setting this one dropped should get the preset, not
+    an error.
+    """
+    target = resolve(target)
+    if not options:
+        return target
+    allowed = {o.key for o in adjustable(target)}
+    changes = {}
+    for key, value in options.items():
+        if key not in allowed:
+            continue
+        if key in {"height", "max_edge", "quality", "dpi"}:
+            try:
+                value = int(value) if value not in (None, "", "null") else None
+            except (TypeError, ValueError):
+                continue
+        changes[key] = value
+    return replace(target, **changes) if changes else target
 
 
 def kinds():

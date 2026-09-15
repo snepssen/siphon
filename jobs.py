@@ -60,15 +60,21 @@ class Queue:
 
     # -- adding ----------------------------------------------------------
 
-    def add_url(self, target_url, format_name, output=None, **options):
-        """Expand a URL or path and queue everything it turned out to be."""
+    def add_url(self, target_url, format_name, output=None, settings=None,
+                **options):
+        """Expand a URL or path and queue everything it turned out to be.
+
+        `settings` are the quality choices for the format; `options` are for
+        the source doing the expanding. Two different things that both wanted
+        to be called options.
+        """
         items = sources.expand(target_url, **options)
         if len(items) > 1:
             for item in items:
                 item.extra["collection_size"] = len(items)
-        return self.add(items, format_name, output=output)
+        return self.add(items, format_name, output=output, settings=settings)
 
-    def add(self, items, format_name, output=None, batch=None):
+    def add(self, items, format_name, output=None, batch=None, settings=None):
         """Queue items against a target format. Returns the jobs created.
 
         A batch identifies *this* addition, not the album — adding the same
@@ -85,6 +91,7 @@ class Queue:
                 job = Job(
                     item=item,
                     target=str(format_name),
+                    options=dict(settings or {}),
                     output_dir=str(output) if output else None,
                     batch=batch,
                 )
@@ -161,7 +168,7 @@ class Queue:
         # time and starts looking like one that completed.
         paused = False
         try:
-            target = formats.resolve(job.target)
+            target = formats.apply_options(job.target, job.options)
             item = job.item
 
             # ---- resolve -----------------------------------------------

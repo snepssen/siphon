@@ -169,8 +169,10 @@ def command_get(args):
     else:
         print(f"{items[0].display()} → {target.name}")
 
-    queue.add(items, target.name, output=args.output,
-              batch=items[0].collection if len(items) > 1 else None)
+    settings = _settings_from(args, target)
+    if settings:
+        print("  " + ", ".join(f"{k} {v}" for k, v in settings.items()))
+    queue.add(items, target.name, output=args.output, settings=settings)
     queue.start()
     try:
         queue.drain()
@@ -242,6 +244,32 @@ def _settle(queue, job, picking):
             queue.choose(job.id, options[int(answer) - 1]["url"])
             return
         print("  A number from the list, or s to skip.")
+
+
+def _settings_from(args, target):
+    """The quality choices that actually apply to this format.
+
+    A flag that does nothing is worse than no flag, so one that does not apply
+    is said out loud rather than silently dropped.
+    """
+    wanted = {
+        "abitrate": getattr(args, "bitrate", None),
+        "height": getattr(args, "height", None),
+        "quality": getattr(args, "quality", None),
+        "max_edge": getattr(args, "max_edge", None),
+        "dpi": getattr(args, "dpi", None),
+    }
+    given = {key: value for key, value in wanted.items() if value is not None}
+    if not given:
+        return {}
+
+    allowed = {option.key for option in formats.adjustable(target)}
+    ignored = sorted(set(given) - allowed)
+    if ignored:
+        names = ", ".join(ignored)
+        print(f"  ({names} does not apply to {target.name}, so it is ignored)",
+              file=sys.stderr)
+    return {key: value for key, value in given.items() if key in allowed}
 
 
 def _report(queue, verbose=False):
@@ -324,6 +352,13 @@ def command_formats(_args):
         for name in names:
             target = formats.PRESETS[name]
             print(f"  {name:<{width}}  {target.summary}")
+            knobs = formats.adjustable(target)
+            if knobs:
+                flags = {"abitrate": "--bitrate", "height": "--height",
+                         "quality": "--quality", "max_edge": "--longest-side",
+                         "dpi": "--dpi"}
+                print(f"  {'':<{width}}  adjust with "
+                      + ", ".join(flags[k.key] for k in knobs))
 
     missing = platform_support.survey()
     absent = [f"{key} ({entry['install']})"
@@ -591,6 +626,19 @@ def build_parser():
         p.add_argument("--pick", choices=("ask", "best", "skip"), default="ask",
                        help="what to do when a track match is uncertain: ask "
                             "(default), take the best, or skip it")
+        # The same adjustments the window offers. `siphon formats` lists which
+        # apply to which, because offering a bitrate for FLAC would be a flag
+        # that does nothing.
+        p.add_argument("--bitrate", metavar="RATE",
+                       help="audio bitrate, e.g. 192k")
+        p.add_argument("--height", type=int, metavar="PIXELS",
+                       help="cap video height, e.g. 1080")
+        p.add_argument("--quality", type=int, metavar="1-100",
+                       help="image quality")
+        p.add_argument("--longest-side", type=int, metavar="PIXELS",
+                       dest="max_edge", help="cap an image's longest side")
+        p.add_argument("--dpi", type=int, metavar="DPI",
+                       help="how finely to render a PDF page")
 
     get = sub.add_parser("get", help="fetch a URL")
     get.add_argument("url", help="a link, or a path to a file or folder")
