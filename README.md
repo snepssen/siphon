@@ -181,9 +181,45 @@ without siphon being touched.
 
 ## Formats
 
-`siphon formats` lists them. The short version: `mp3`, `m4a`, `opus`, `flac`,
-`wav` for audio; `mp4`, `mp4-1080`, `mp4-720`, `mkv`, `webm` for video; and
-`audio` or `video` for "whatever it already was, untouched".
+`siphon formats` lists them, grouped, and says which need a program you have
+not installed yet.
+
+| | |
+| --- | --- |
+| **Audio** | `mp3` `m4a` `opus` `flac` `wav` `audio` |
+| **Video** | `mp4` `mp4-1080` `mp4-720` `mkv` `webm` `video` |
+| **Images** | `jpg` `png` `webp` `tiff` `gif` `web-image` |
+| **Documents** | `pdf` `docx` `epub` `html` `md` `txt` `rtf` |
+
+`audio` and `video` mean "whatever it already was, untouched". `web-image` is
+a JPEG with its longest side capped at 2000px.
+
+Images and documents go through the same pipeline everything else does, so
+`siphon convert photos/ --as web-image` works on a folder, and a PDF rendered
+to images gives you one file per page rather than a picture of page one.
+
+Two notes on what is honest here. Converting a document is not like
+transcoding audio: pandoc reads it into its own representation and writes it
+out again, so tracked changes and exact layout do not survive — every plan
+says what it will lose before it runs. And **there is no way back out of a
+PDF**: a PDF describes marks on a page, and the structure the document had
+before it became one is not in the file. siphon makes PDFs smaller and renders
+their pages; it does not pretend to un-print them.
+
+## A second way to fetch
+
+If you run your own [cobalt](https://github.com/imputnet/cobalt) instance, put
+its address in Settings and prefix a link with `cobalt:` to fetch it that way
+instead:
+
+```sh
+siphon get 'cobalt:https://www.instagram.com/p/…'
+```
+
+They fail differently — two implementations of the same awkward job, written
+by different people against the same moving targets — so a site that has
+broken for one is often fine on the other. yt-dlp keeps everything by default;
+this is one setting away when you need it.
 
 ## Keys
 

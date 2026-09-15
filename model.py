@@ -119,6 +119,7 @@ class Job:
     message: str = ""              # what to show under the bar
 
     output_path: str = None
+    extra_outputs: list = field(default_factory=list)   # a PDF's other pages
     output_dir: str = None         # None means the configured default
     error: str = None
     log: list = field(default_factory=list)   # last few lines, for diagnosis

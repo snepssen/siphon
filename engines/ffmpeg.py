@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import formats
-from platform_support import require, MissingProgram
+from platform_support import find, require, MissingProgram
 from engines import ConversionError
 
 NONE = "none"
@@ -64,8 +64,51 @@ class Plan:
         return not (self.reencodes_video or self.reencodes_audio)
 
 
+# Still-image containers, and the encoder each needs. ffmpeg is not the best
+# image tool but it is the one that is always here, so it covers what it can
+# and ImageMagick — which is asked first — covers the rest.
+IMAGE_ENCODERS = {
+    "png": "png", "jpg": "mjpeg", "jpeg": "mjpeg", "bmp": "bmp",
+    "tiff": "tiff", "gif": "gif", "webp": "libwebp", "jp2": "jpeg2000",
+}
+
+IMAGE_SUFFIXES = {"png", "jpg", "jpeg", "bmp", "tiff", "tif", "gif", "webp",
+                  "jp2", "ppm", "pgm", "tga", "qoi", "apng"}
+
+_encoders = None
+
+
+def _has_encoder(name):
+    """Whether this ffmpeg build can actually write that.
+
+    Asked rather than assumed: Homebrew's ffmpeg ships without libwebp, so a
+    build that reads WebP perfectly happily cannot write a single byte of it.
+    Claiming the format and failing at the last step would be worse than
+    declining it and letting ImageMagick say so.
+    """
+    global _encoders
+    if _encoders is None:
+        _encoders = set()
+        binary = find("ffmpeg")
+        if binary:
+            try:
+                out = subprocess.run([binary, "-hide_banner", "-encoders"],
+                                     capture_output=True, text=True, timeout=30)
+                for line in (out.stdout or "").splitlines():
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[0][:1] in {"V", "A", "S"}:
+                        _encoders.add(parts[1])
+            except (OSError, subprocess.SubprocessError):
+                pass
+    return name in _encoders
+
+
 def can(source_path, target, kind=None):
     target = formats.resolve(target)
+    if target.kind == formats.IMAGE:
+        suffix = Path(str(source_path)).suffix.lstrip(".").lower()
+        encoder = IMAGE_ENCODERS.get(target.container)
+        return bool(encoder) and suffix in IMAGE_SUFFIXES and _has_encoder(encoder)
     if target.kind not in {formats.AUDIO, formats.VIDEO}:
         return False
     if kind not in HANDLED_KINDS and kind not in {"audio", "video"}:
@@ -135,6 +178,8 @@ def plan(source_path, target, metadata=None, artwork=None):
     """
     target = formats.resolve(target)
     source_path = str(source_path)
+    if target.kind == formats.IMAGE:
+        return _image_plan(source_path, target)
     info = probe(source_path)
 
     video = [s for s in _streams(info, "video") if not _is_cover(s)]
@@ -311,6 +356,102 @@ def _metadata_args(metadata, target):
         # YouTube video's name rather than the track's.
         argv = ["-map_metadata", "-1"] + argv
     return argv
+
+
+def _image_plan(source_path, target):
+    """A still image, which has no streams worth reasoning about."""
+    suffix = Path(source_path).suffix.lstrip(".").lower()
+    detail = []
+    width = height = None
+    alpha = False
+    try:
+        info = probe(source_path)
+        stream = next((s for s in info.get("streams", [])
+                       if s.get("codec_type") == "video"), None)
+        if stream:
+            width, height = _int(stream.get("width")), _int(stream.get("height"))
+            alpha = _has_alpha(stream.get("pix_fmt"))
+    except ConversionError:
+        pass
+
+    resizing = bool(target.max_edge and width and height
+                    and max(width, height) > target.max_edge)
+    equivalents = {"jpg": {"jpg", "jpeg"}, "tiff": {"tif", "tiff"}}
+    same = suffix in equivalents.get(target.container, {target.container})
+    if same and not resizing:
+        return Plan(action=NONE,
+                    summary="Already in the requested format; left alone.",
+                    detail=["nothing to do: the file is already what was asked for"],
+                    suffix=target.container)
+
+    if width and height:
+        detail.append(f"{width}×{height} {suffix.upper()}"
+                      + (" with transparency" if alpha else ""))
+
+    argv = ["-hide_banner", "-nostdin", "-y", "-i", source_path, "-frames:v", "1"]
+
+    # The filtergraph is built as labelled stages and handed to
+    # -filter_complex rather than -vf. -vf takes a *simple* chain — one input,
+    # one output — and flattening transparency needs a second input to
+    # composite onto, so a labelled graph in -vf is rejected with ffmpeg's
+    # least helpful sentence, "Invalid argument".
+    stages = []
+    if resizing:
+        stages.append(
+            f"[0:v]scale=w='min(iw,{target.max_edge})':h='min(ih,{target.max_edge})':"
+            f"force_original_aspect_ratio=decrease[sized]"
+        )
+        detail.append(f"scaled down so the longest side is {target.max_edge}px")
+        head = "[sized]"
+    else:
+        head = "[0:v]"
+
+    flattening = alpha and target.container in {"jpg", "jpeg"}
+    if flattening:
+        # scale2ref sizes a white canvas to match the image, whatever the
+        # resize did. Without this a transparent PNG becomes a black-backed
+        # JPEG, silently, which is how logos get ruined.
+        stages.append(f"color=white[canvas];[canvas]{head}scale2ref[bg][img]")
+        stages.append("[bg][img]overlay=format=auto,format=yuvj420p[out]")
+        detail.append("transparency flattened onto white (JPEG has no alpha)")
+    elif target.container in {"jpg", "jpeg"}:
+        stages.append(f"{head}format=yuvj420p[out]")
+    else:
+        stages.append(f"{head}null[out]")
+
+    argv += ["-filter_complex", ";".join(stages), "-map", "[out]"]
+
+    encoder = IMAGE_ENCODERS.get(target.container)
+    argv += ["-c:v", encoder]
+    if target.quality and target.container in {"jpg", "jpeg"}:
+        # mjpeg wants 2 (best) to 31 (worst); people think in 1-100.
+        scaled = max(2, min(31, round(31 - (target.quality / 100) * 29)))
+        argv += ["-q:v", str(scaled)]
+        detail.append(f"quality {target.quality}")
+
+    return Plan(
+        action=ENCODE,
+        argv=argv,
+        summary=f"Converted to {target.container.upper()} with ffmpeg."
+                + (" Scaled down." if resizing else ""),
+        detail=detail,
+        suffix=target.container,
+    )
+
+
+# Pixel formats that carry transparency. `pal8` is in because a paletted PNG
+# can have a transparent entry and there is no cheap way to know it does not.
+_ALPHA_FORMATS = {
+    "rgba", "bgra", "argb", "abgr", "ya8", "ya16", "pal8",
+    "yuva420p", "yuva422p", "yuva444p", "rgba64be", "rgba64le",
+    "bgra64be", "bgra64le", "gbrap", "gbrap16le", "gbrap16be",
+}
+
+
+def _has_alpha(pix_fmt):
+    if not pix_fmt:
+        return False
+    return pix_fmt in _ALPHA_FORMATS or pix_fmt.startswith(("yuva", "rgba", "bgra"))
 
 
 def _summary(action, target, reencodes_video, reencodes_audio, source_container):

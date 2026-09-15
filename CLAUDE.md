@@ -126,6 +126,48 @@ the job's own `choice["options"]` and refuses anything else, so the window's
 `/api/choose` cannot be talked into fetching an arbitrary address by a request
 that did not come from the page. There is a test for it.
 
+**Two engines claim images, and the order decides.** ImageMagick goes first
+and takes them when it is installed; ffmpeg picks up what is left when it is
+not. That is deliberate: ffmpeg converts PNG, JPEG, TIFF, BMP and GIF
+perfectly well and is always here, so images work out of the box and work for
+*more* formats once somebody installs ImageMagick — rather than refusing every
+image until they do. `ffmpeg._has_encoder` asks the binary what it can write
+rather than assuming: Homebrew's build reads WebP and cannot write a byte of
+it, so ffmpeg declines WebP and ImageMagick's absence is what gets reported.
+
+**`-vf` takes a simple chain; a labelled graph needs `-filter_complex`.**
+Flattening transparency needs a second input to composite onto, which makes it
+a labelled graph, and passing that to `-vf` is rejected as "Invalid argument"
+— ffmpeg's least helpful sentence, and the second time this project has been
+told it. The image path builds labelled stages and passes `-filter_complex`
+with an explicit `-map`.
+
+**Flattening transparency onto black is the silent default.** A transparent
+PNG saved as JPEG goes black behind, because `format=yuv420p` alone just drops
+the alpha. Logos and screenshots are exactly what people convert, so
+`_image_plan` composites onto white via `scale2ref` and there is a test that
+reads the corner pixels back.
+
+**An engine may produce more than one file.** A PDF rendered to images is one
+per page. `run` may return a list, and `jobs._process` places every one of
+them — returning just the first quietly lost the rest when the working
+directory was cleaned up, so a forty-page PDF arrived as a single image of
+page one. `Job.extra_outputs` carries the others so the count shown is the
+count written.
+
+**pandoc cannot read a PDF, and that is not a gap to fill.** It writes them
+given a typesetter; there is no route back, because a PDF describes marks on a
+page and the structure the document had before it became one is not in the
+file. `pandoc.can` returns False for a PDF source so Ghostscript gets it.
+Writing a PDF needs a typesetter pandoc does not ship — none is installed
+here, so `pdf` output from a document currently refuses with the install line
+for tectonic.
+
+**cobalt is off unless configured and only ever claims `cobalt:` links.** It
+sits behind yt-dlp, which keeps everything by default. It claims the prefix
+even with no instance set, so the refusal can say how to configure one instead
+of the registry saying "nothing here knows what to do with cobalt:…".
+
 **Deezer describes a playlist and an album differently.** A playlist's nested
 tracks carry `isrc` and `track_position`; an album's carry neither. So an
 album is listed from the order it arrives in and `deezer.enrich` fills in the
@@ -263,7 +305,12 @@ cannot yet handle should be a new module in `engines/` and one line in
   embedding, and the confirmation step for uncertain matches in both the
   terminal and the window. The one gap is Tidal's playlist path, which needs a
   real playlist link to verify.
-- **Phase 4.** Breadth: ImageMagick, pandoc and Ghostscript engines; a
-  self-hosted cobalt instance as a second fetch backend.
+- **Phase 4, done bar verification.** ImageMagick, pandoc and Ghostscript
+  engines, images and documents in the format catalogue, and cobalt as a
+  second fetch backend. Two things unverified: ImageMagick is not installed on
+  this machine, so its engine is exercised only by tests that skip; and
+  **cobalt's request path has never met a real instance** — the docker daemon
+  was not running — so only `_interpret` is tested, from fixtures of its
+  documented answers.
 - **Phase 4.** Breadth. ImageMagick, pandoc and Ghostscript engines; a
   self-hosted cobalt instance as a second fetch backend.

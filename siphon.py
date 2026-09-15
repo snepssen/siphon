@@ -256,6 +256,8 @@ def _report(queue, verbose=False):
             size = f"  ({_size(os.path.getsize(where))})"
         except OSError:
             pass
+        if job.extra_outputs:
+            size = f"  (+{len(job.extra_outputs)} more pages)"
         uncertain = ""
         confidence = job.item.match_confidence
         if confidence is not None and confidence < 0.75:
@@ -273,7 +275,10 @@ def _report(queue, verbose=False):
 
     if done:
         folder = os.path.dirname(done[0].output_path or "")
-        print(f"\n{len(done)} file{'s' if len(done) != 1 else ''} in {folder}")
+        # A job can put down more than one file — a PDF rendered to images is
+        # one per page — so count what was written, not how many jobs ran.
+        written = sum(1 + len(job.extra_outputs or []) for job in done)
+        print(f"\n{written} file{'s' if written != 1 else ''} in {folder}")
     return 1 if failed else 0
 
 
@@ -304,10 +309,31 @@ def command_list(args):
 
 
 def command_formats(_args):
-    print("Formats --as will accept:\n")
+    """What --as will accept, grouped, with what is missing marked.
+
+    A preset nothing installed can produce is still listed — with the reason —
+    because "webp is not a format siphon knows" and "webp needs one more brew
+    command" are very different things to be told.
+    """
     width = max(len(name) for name in formats.PRESETS)
-    for name, target in formats.PRESETS.items():
-        print(f"  {name:<{width}}  {target.summary}")
+    headings = {formats.AUDIO: "Audio", formats.VIDEO: "Video",
+                formats.IMAGE: "Images", formats.DOCUMENT: "Documents"}
+
+    for kind, names in formats.kinds().items():
+        print(f"\n{headings.get(kind, kind)}")
+        for name in names:
+            target = formats.PRESETS[name]
+            print(f"  {name:<{width}}  {target.summary}")
+
+    missing = platform_support.survey()
+    absent = [f"{key} ({entry['install']})"
+              for key, entry in missing.items()
+              if not entry["present"] and not entry["required"]]
+    if absent:
+        print("\nSome of these need a program that is not installed:")
+        for line in absent:
+            print(f"  {line}")
+
     print(f"\nThe default is “{formats.DEFAULT_PRESET}”.")
     return 0
 

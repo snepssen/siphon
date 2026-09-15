@@ -13,7 +13,11 @@ be edited every time somebody wants webp.
 
 import importlib
 
-ORDER = ("ffmpeg",)
+# Specific first, general last — the same rule the source registry uses.
+# ImageMagick gets first refusal on images because it reaches formats ffmpeg
+# cannot; Ghostscript claims PDFs; pandoc claims documents; ffmpeg takes
+# everything else, and the images ImageMagick is not here for.
+ORDER = ("imagemagick", "ghostscript", "pandoc", "ffmpeg")
 
 _loaded = {}
 

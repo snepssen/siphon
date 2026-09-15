@@ -239,6 +239,12 @@ class Queue:
                     on_progress=lambda u: self._progress(job, u),
                     should_cancel=lambda: job.id in self._cancelled,
                 )
+            # An engine may legitimately produce more than one file — a PDF
+            # rendered to images is one per page. Taking only the first would
+            # lose the rest to the working directory's cleanup, silently.
+            extras = []
+            if isinstance(produced, (list, tuple)):
+                produced, extras = produced[0], list(produced[1:])
             self._check_cancelled(job)
 
             # ---- place -------------------------------------------------
@@ -248,12 +254,28 @@ class Queue:
             self._notify(force=True)
 
             destination = library.destination(item, target, job.output_dir)
+            if extras:
+                # Numbered from one, so page ten sorts after page nine.
+                width = max(2, len(str(len(extras) + 1)))
+                destination = destination.with_name(
+                    f"{destination.stem} {1:0{width}d}{destination.suffix}")
             final = library.place(produced, destination,
                                   move=not produced_is_original)
 
+            placed = [final]
+            for number, spare in enumerate(extras, start=2):
+                width = max(2, len(str(len(extras) + 1)))
+                beside = Path(final).with_name(
+                    f"{Path(final).stem[:-len(str(1).zfill(width))].rstrip()} "
+                    f"{number:0{width}d}{Path(final).suffix}")
+                placed.append(library.place(spare, beside, move=True))
+
             job.output_path = final
+            job.extra_outputs = placed[1:] if len(placed) > 1 else []
             job.state = model.DONE
-            job.message = f"Saved to {final}"
+            job.message = (f"Saved {len(placed)} files to "
+                           f"{Path(final).parent}" if len(placed) > 1
+                           else f"Saved to {final}")
             job.note(job.message)
 
         except _NeedsChoice as question:

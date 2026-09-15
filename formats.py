@@ -42,6 +42,8 @@ class Target:
     height: int = None            # cap the long-ish edge; None leaves it alone
     fps: float = None
     lossless: bool = False
+    quality: int = None           # 1-100 for lossy images; None leaves it alone
+    max_edge: int = None          # cap the longest side of an image
     extra: tuple = field(default_factory=tuple)   # raw ffmpeg args, escape hatch
 
     @property
@@ -51,6 +53,14 @@ class Target:
     @property
     def audio_only(self):
         return self.kind == AUDIO
+
+    @property
+    def visual(self):
+        return self.kind == IMAGE
+
+    @property
+    def textual(self):
+        return self.kind == DOCUMENT
 
 
 # Codecs each container is allowed to carry. Used only to decide whether the
@@ -142,6 +152,71 @@ PRESETS = {
     ),
 }
 
+# ---- still images -------------------------------------------------------
+# ffmpeg handles most of these and ImageMagick handles the rest; the engines
+# work out between them which is which, so a preset here says what is wanted
+# rather than what will do it.
+PRESETS.update({
+    "jpg": Target(
+        name="jpg", kind=IMAGE, container="jpg", quality=92,
+        summary="JPEG — the one every program on earth opens",
+    ),
+    "png": Target(
+        name="png", kind=IMAGE, container="png", lossless=True,
+        summary="PNG — lossless, keeps transparency, larger files",
+    ),
+    "webp": Target(
+        name="webp", kind=IMAGE, container="webp", quality=88,
+        summary="WebP — about a third smaller than JPEG at the same quality "
+                "(needs ImageMagick; ffmpeg here can read it but not write it)",
+    ),
+    "tiff": Target(
+        name="tiff", kind=IMAGE, container="tiff", lossless=True,
+        summary="TIFF — lossless, for print and archives",
+    ),
+    "gif": Target(
+        name="gif", kind=IMAGE, container="gif",
+        summary="GIF — 256 colours, animates",
+    ),
+    "web-image": Target(
+        name="web-image", kind=IMAGE, container="jpg", quality=82,
+        max_edge=2000,
+        summary="JPEG, longest side capped at 2000px — for putting on a page",
+    ),
+})
+
+# ---- documents ----------------------------------------------------------
+PRESETS.update({
+    "pdf": Target(
+        name="pdf", kind=DOCUMENT, container="pdf",
+        summary="PDF — from a document, or a smaller PDF from a PDF",
+    ),
+    "docx": Target(
+        name="docx", kind=DOCUMENT, container="docx",
+        summary="Word — for people who will send it back with tracked changes",
+    ),
+    "epub": Target(
+        name="epub", kind=DOCUMENT, container="epub",
+        summary="EPUB — for e-readers",
+    ),
+    "html": Target(
+        name="html", kind=DOCUMENT, container="html",
+        summary="A single self-contained HTML page",
+    ),
+    "md": Target(
+        name="md", kind=DOCUMENT, container="md",
+        summary="Markdown — plain text that survives everything",
+    ),
+    "txt": Target(
+        name="txt", kind=DOCUMENT, container="txt",
+        summary="Plain text, formatting discarded",
+    ),
+    "rtf": Target(
+        name="rtf", kind=DOCUMENT, container="rtf",
+        summary="Rich text — opens in anything, keeps basic formatting",
+    ),
+})
+
 DEFAULT_PRESET = "video"
 
 
@@ -154,6 +229,9 @@ def resolve(name):
     key = str(name).strip().lower().replace("_", "-").lstrip(".")
     aliases = {
         "best": "video", "original": "video", "source": "video",
+        "jpeg": "jpg", "tif": "tiff", "htm": "html", "markdown": "md",
+        "text": "txt", "word": "docx", "ebook": "epub", "image": "jpg",
+        "web": "web-image",
         "1080p": "mp4-1080", "720p": "mp4-720", "1080": "mp4-1080",
         "720": "mp4-720", "m4b": "m4a", "aac": "m4a", "mpeg4": "mp4",
         "mka": "mkv", "oga": "opus",
@@ -163,6 +241,14 @@ def resolve(name):
         known = ", ".join(sorted(PRESETS))
         raise UnknownFormat(f"No format called {name!r}. Known: {known}")
     return PRESETS[key]
+
+
+def kinds():
+    """Presets grouped by what they are for, so a listing can be read."""
+    grouped = {}
+    for name, target in PRESETS.items():
+        grouped.setdefault(target.kind, []).append(name)
+    return grouped
 
 
 def can_hold(container, codec, stream_kind):
