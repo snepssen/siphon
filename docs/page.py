@@ -10,9 +10,7 @@ Prose is authored HTML: a paragraph may carry a link, an `<em>` or a
 not escaped.
 """
 
-FONTS = ("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700"
-         "&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500"
-         "&display=swap")
+FONTS = "fonts.css"
 
 PAGE = {
     "meta": {
