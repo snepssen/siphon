@@ -21,8 +21,9 @@ asks before the window ever fails to appear. The rule it enforces: siphon
 never runs `sudo` on anybody's behalf, so a package manager that needs root
 gets its command printed rather than executed.
 
-`media-preflight` only prints install lines. It predates this and has not been
-brought up to it.
+`media-preflight` follows it too. Its `bootstrap.py` offers the install and
+defaults to yes, and a package manager that needs root gets the command
+printed rather than run. `protoke` still only reports the command.
 
 ## The scope fence
 
@@ -442,8 +443,8 @@ cannot yet handle should be a new module in `engines/` and one line in
   below — but it is correct, tested, and the piece anything else would need.
 - **Phase 4, done and verified.** ImageMagick, pandoc and Ghostscript engines,
   images and documents in the catalogue, cobalt as a second fetch backend, and
-  `bootstrap.py` — which is the convention the whole family follows and the
-  thing to copy into the next tool.
+  `bootstrap.py` — the family's convention for offering to install what a tool
+  does not ship, and the thing to copy into the next tool.
 
 - **Packaging, done.** `build.sh` makes a zipapp and a `.app`, `release.sh`
   packages four archives and stops short of publishing, and `docs/` is the
@@ -478,8 +479,8 @@ Two files feed it:
     this shape goes stale.
   * **`docs/ecosystem.json`** — the projects in the rail and the grid, shared
     byte-identically across every repo exactly as `ecosystem.css` and
-    `ecosystem.js` already are. Adding a seventh project is one entry plus a
-    rebuild of each page, not six hand edits.
+    `ecosystem.js` already are. Adding a project is one entry in site-core
+    and a sync.
 
 The reason this exists rather than more hand-written HTML: chrome retyped per
 project drifts per project. siphon's jump navigation had become a `<p>` nested
@@ -489,9 +490,15 @@ ancestor — so it scrolled away with the header while every sibling's stayed
 put. Nobody wrote that bug on purpose; it is what copying a layout by hand
 does.
 
-`build.py` and `ecosystem.json` are copied byte-identically into every sibling
-repo; `cmp` is the test. All five project pages are generated now, and the
-sixth is partly.
+`build.py`, `ecosystem.json`, `ecosystem.css` and `ecosystem.js` are copies,
+byte-identical in every project that has a page. Their source is
+github.com/snepssen/site-core. `./sync.sh` there checks the copies with
+`cmp`, carries a change into each of those projects, rebuilds the page and
+pushes it; `.github/workflows/workshop-pages.yml` runs the same sync once a
+day. Seven pages are generated whole from `page.py`: gateway-forge,
+voice-forge, protoke, media-preflight, siphon, auto-sort and translate-core.
+tools-core's is partly — see below. voice-polyglot and voice-core are in the
+network and have no page.
 
 A section may carry structured **`blocks`** or a **`body`** naming an HTML
 partial in `docs/sections/`. Both exist because the pages differ honestly.
@@ -506,9 +513,10 @@ diagram is not improved by being retyped as a dict.
 page: a hero, a site navigation, sections that each carry their own `.wrap`,
 no jump bar. Putting it through `build.py` would mean five special cases only
 that page uses, which is the coupling this whole arrangement exists to avoid.
-Instead `docs/sync.py` there rewrites just the two regions it genuinely
-shares — the rail and the ecosystem grid — from the same `ecosystem.json` and
-the same `build.py` functions, and leaves the rest hand-written.
+Instead `docs/sync.py` there rewrites the regions it genuinely shares — the
+rail, the ecosystem grid and the contact card — from the same
+`ecosystem.json` and the same `build.py` functions, and leaves the rest
+hand-written.
 
 Converting the siblings turned up the same class of bug in three more places:
 Gateway Forge and Voice Forge had the jump nav nested inside `.wrap` (doubled
