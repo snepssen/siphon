@@ -496,7 +496,7 @@ github.com/snepssen/site-core. `./sync.sh` there checks the copies with
 `cmp`, carries a change into each of those projects, rebuilds the page and
 pushes it; `.github/workflows/workshop-pages.yml` runs the same sync once a
 day. Seven pages are generated whole from `page.py`: gateway-forge,
-voice-forge, protoke, media-preflight, siphon, auto-sort and translate-core.
+voice-forge, protoke, media-preflight, siphon, auto-sort and interpreter-forge.
 tools-core's is partly — see below. voice-polyglot and voice-core are in the
 network and have no page.
 
