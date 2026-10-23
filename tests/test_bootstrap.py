@@ -95,7 +95,7 @@ class CobaltWithoutDocker(unittest.TestCase):
         absent = cobalt_service.requirements()
         self.assertIsInstance(absent, list)
         for key in absent:
-            self.assertIn(key, {"git", "node", "pnpm"})
+            self.assertIn(key, {"git", "node", "pnpm", "node-gyp"})
 
     def test_it_binds_the_loopback_address_only(self):
         """cobalt defaults to 0.0.0.0; here it is one person's helper."""
