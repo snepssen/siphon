@@ -37,4 +37,4 @@ Source = "https://github.com/snepssen/siphon"
 [tool.setuptools]
 py-modules = ["siphon", "jobs", "model", "formats", "library", "paths",
               "credentials", "platform_support"]
-packages = ["sources", "engines"]
+packages = ["sources", "engines", "workshop"]

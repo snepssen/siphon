@@ -21,6 +21,13 @@ asks before the window ever fails to appear. The rule it enforces: siphon
 never runs `sudo` on anybody's behalf, so a package manager that needs root
 gets its command printed rather than executed.
 
+**How it asks lives in `workshop/`, which is not siphon's to edit.** It is
+[workshop-core](https://github.com/snepssen/workshop-core)'s copy, synced in
+by that repository's `sync.sh` (which runs these tests before committing).
+`platform_support.py` keeps siphon's `PROGRAMS` table and its public names;
+`bootstrap.py` keeps siphon's wording. A change to finding, the manager table
+or the offer is made in workshop-core and synced, never here.
+
 `media-preflight` follows it too. Its `bootstrap.py` offers the install and
 defaults to yes, and a package manager that needs root gets the command
 printed rather than run. `protoke` still only reports the command.
@@ -419,7 +426,8 @@ formats.py      presets, and what each container is allowed to hold
 library.py      what a finished file is called and where it goes
 credentials.py  keys, and the instructions the settings page is generated from
 paths.py        the four directories
-platform_support.py   finding external programs, and explaining their absence
+platform_support.py   siphon's external programs, over workshop/
+workshop/       workshop-core's shared copy: finding programs, offering installs
 ```
 
 Both registries — `sources.ORDER` and `engines.ORDER` — are ordered, specific
@@ -444,7 +452,8 @@ cannot yet handle should be a new module in `engines/` and one line in
 - **Phase 4, done and verified.** ImageMagick, pandoc and Ghostscript engines,
   images and documents in the catalogue, cobalt as a second fetch backend, and
   `bootstrap.py` — the family's convention for offering to install what a tool
-  does not ship, and the thing to copy into the next tool.
+  does not ship. Since 2026-10-23 the general part is workshop-core's, which
+the next tool takes instead of a copy of this one.
 
 - **Packaging, done.** `build.sh` makes a zipapp and a `.app`, `release.sh`
   packages four archives and stops short of publishing, and `docs/` is the
