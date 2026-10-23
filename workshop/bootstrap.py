@@ -7,8 +7,9 @@ answer is yes to all of it: pressing return installs everything.
 
 Two things it will not do. It never invokes `sudo` on anybody's behalf: on a
 package manager that needs root the commands are printed for the person to
-run. And it never installs anything without being asked, except when told
-`--yes`, which is there for scripts and for the launcher.
+run, and whatever installs without root (a venv, say) still goes ahead. And
+it never installs anything without being asked, except when told `--yes`,
+which is there for scripts and for the launcher.
 
 A tool makes one `Bootstrap` from its `Registry` and its own words, and its
 start script runs `main()`: `--check` is silent and answers by exit code.
@@ -20,8 +21,22 @@ import sys
 from . import programs as _programs
 
 
+def run(argv, on_line=None):
+    """Run one install command. None when it succeeded, else the last line it said."""
+    if on_line:
+        on_line(f"$ {' '.join(argv)}")
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, timeout=3600)
+    except (OSError, subprocess.SubprocessError) as error:
+        return str(error)
+    if done.returncode == 0:
+        return None
+    detail = (done.stderr or done.stdout or "").strip().splitlines()
+    return detail[-1] if detail else f"exit {done.returncode}"
+
+
 class Bootstrap:
-    def __init__(self, registry, *, banner, again, note=None, manager=None):
+    def __init__(self, registry, *, banner, again, note=None, manager=None, runner=None):
         """
         registry: the tool's programs.Registry.
         banner: the first line shown, such as "siphon needs a few programs it does not ship."
@@ -30,16 +45,22 @@ class Bootstrap:
         manager: optional; returns the package manager to use. A tool whose
             tests replace its own `current_manager` passes a lookup of that
             name, so the replacement is the one asked.
+        runner: optional; runs one argv as `run` does. The same reason.
         """
         self.registry = registry
         self.banner = banner
         self.again = again
         self.note = note
         self.manager = manager or (lambda: _programs.current_manager())
+        self.runner = runner or run
 
     @property
     def tool(self):
         return self.registry.tool
+
+    @property
+    def width(self):
+        return max(len(key) for key in self.registry.programs) + 2
 
     def survey(self):
         """Everything missing, split into what the tool cannot work without."""
@@ -53,33 +74,39 @@ class Bootstrap:
         """The argv that would install one program, or None if it cannot."""
         return _programs.command_for(program, manager)
 
-    def describe(self, program, manager):
+    def commands(self, program, manager):
+        """Every argv that installs one program, in order; [] if none can."""
+        if program.steps:
+            return list(program.steps())
         argv = self.command_for(program, manager)
-        return " ".join(argv) if argv else f"(no {manager} package known)"
+        return [argv] if argv else []
+
+    def describe(self, program, manager):
+        argvs = self.commands(program, manager)
+        if not argvs:
+            return f"(no {manager} package known)"
+        return "\n  ".join(" ".join(argv) for argv in argvs)
 
     def install(self, chosen, manager, on_line=None):
         """Run the installs. Returns [(program, ok, detail)] in the order tried."""
         results = []
         for program in chosen:
-            argv = self.command_for(program, manager)
-            if argv is None:
+            argvs = self.commands(program, manager)
+            if not argvs:
                 results.append((program, False, "no package known for this system"))
                 continue
-            if on_line:
-                on_line(f"$ {' '.join(argv)}")
-            try:
-                done = subprocess.run(argv, capture_output=True, text=True, timeout=1800)
-            except (OSError, subprocess.SubprocessError) as error:
-                results.append((program, False, str(error)))
-                continue
+            problem = None
+            for argv in argvs:
+                problem = self.runner(argv, on_line)
+                if problem:
+                    break
             # Ask the disk, not the exit code: Homebrew returns non-zero for
             # things that are not failures, such as already installed.
             self.registry.forget()
             if self.registry.find(program.key) is not None:
                 results.append((program, True, ""))
             else:
-                detail = (done.stderr or done.stdout or "").strip().splitlines()
-                results.append((program, False, detail[-1] if detail else f"exit {done.returncode}"))
+                results.append((program, False, problem or "installed, but not found afterwards"))
         return results
 
     def offer(self, assume_yes=False, quiet=False):
@@ -87,7 +114,7 @@ class Bootstrap:
         state = self.survey()
         manager = state["manager"]
         outstanding = state["required"] + state["optional"]
-        width = max([len(p.key) for p in outstanding] + [9]) + 1
+        width = self.width
 
         if not outstanding:
             if not quiet:
@@ -107,28 +134,34 @@ class Bootstrap:
                 print(paragraph)
                 print()
 
-        if manager is None:
-            print(f"{self.tool} could not find a package manager to install them with.", file=sys.stderr)
-            print("On macOS, Homebrew is the usual one: https://brew.sh", file=sys.stderr)
-            return not state["required"]
-
-        label = _programs.MANAGERS[manager]["label"]
-        if _programs.MANAGERS[manager]["needs_root"]:
-            # Never sudo on somebody's behalf. Show the line; let them run it.
-            if not quiet:
-                print(f"Installing these needs root, so {self.tool} will not run it for you. Copy this:\n")
-                names = [p.package_for(manager) for p in outstanding if p.package_for(manager)]
+        packaged = [p for p in outstanding if not p.steps]
+        chosen = outstanding
+        if packaged and (manager is None or _programs.MANAGERS[manager]["needs_root"]):
+            # Name the packages when something else is still being installed.
+            these = "these" if len(packaged) == len(outstanding) else ", ".join(p.key for p in packaged)
+            if manager is None:
+                them = "them" if these == "these" else these
+                print(f"{self.tool} could not find a package manager to install {them} with.", file=sys.stderr)
+                print("On macOS, Homebrew is the usual one: https://brew.sh", file=sys.stderr)
+            elif not quiet:
+                # Never sudo on somebody's behalf. Show the line; let them run it.
+                print(f"Installing {these} needs root, so {self.tool} will not run it for you. Copy this:\n")
+                names = [p.package_for(manager) for p in packaged if p.package_for(manager)]
                 print("  " + " ".join(_programs.MANAGERS[manager]["command"] + names))
                 print()
+            chosen = [p for p in outstanding if p.steps]
+        if not chosen:
             return not state["required"]
 
         if not assume_yes:
-            for program in outstanding:
+            for program in chosen:
                 print(f"  {self.describe(program, manager)}")
             print()
-            what = "it" if len(outstanding) == 1 else f"all {len(outstanding)} of these"
+            what = "it" if len(chosen) == 1 else f"all {len(chosen)} of these"
+            labels = sorted({(p.via or "its own installer") if p.steps
+                             else _programs.MANAGERS[manager]["label"] for p in chosen})
             try:
-                answer = input(f"Install {what} with {label}? [Y/n] ").strip().lower()
+                answer = input(f"Install {what} with {' and '.join(labels)}? [Y/n] ").strip().lower()
             except (EOFError, KeyboardInterrupt):
                 print()
                 return not state["required"]
@@ -137,7 +170,7 @@ class Bootstrap:
                 return not state["required"]
 
         print()
-        results = self.install(outstanding, manager, on_line=print)
+        results = self.install(chosen, manager, on_line=print)
         print()
         for program, ok, detail in results:
             if ok:

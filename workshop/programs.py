@@ -26,7 +26,10 @@ class Program:
     when set, finds the program instead of `binaries`: for a tool that needs a
     capability rather than a name, such as an ffmpeg built with ebur128.
     `provided_by` names another program whose package installs this one, so
-    one download is not offered twice.
+    one download is not offered twice. `steps`, when set, is installed by its
+    own commands rather than a package manager: a callable returning a list of
+    argvs, such as making a venv and running pip in it, with `via` naming
+    what runs them ("pip"). `version_args` of None means not to ask.
     """
 
     key: str
@@ -37,6 +40,8 @@ class Program:
     provided_by: str = None
     version_args: tuple = ("--version",)
     locator: object = None
+    steps: object = None
+    via: str = None
 
     def package_for(self, manager):
         return self.packages.get(manager)
@@ -82,6 +87,8 @@ def command_for(program, manager):
 
 def install_line(program, manager=None):
     """The command a person could type, for the manager they have, or ''."""
+    if program.steps:
+        return " && ".join(" ".join(argv) for argv in program.steps())
     argv = command_for(program, manager or current_manager())
     return " ".join(argv) if argv else ""
 
@@ -169,7 +176,7 @@ class Registry:
     def version(self, key):
         """First line of the program's version output, or None."""
         path = self.find(key)
-        if path is None:
+        if path is None or self.programs[key].version_args is None:
             return None
         try:
             out = subprocess.run([path, *self.programs[key].version_args],
