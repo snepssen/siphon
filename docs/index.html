@@ -168,11 +168,8 @@
     </a>
     <div class="ecosystem-rail__jumps" role="navigation" aria-label="On this page">
       <a href="#problem">The problem</a>
-      <a href="#remux">Why it is fast</a>
-      <a href="#music">Music</a>
-      <a href="#formats">Formats</a>
       <a href="#get">Get it</a>
-      <a href="#limits">What it will not do</a>
+      <a href="#in-depth">How it works</a>
       <a href="#contact">Contact</a>
     </div>
     <div class="ecosystem-rail__more" hidden>
@@ -206,7 +203,7 @@
 
 <div class="wrap">
 <header id="top" class="mast">
-  <span class="badge"><span class="dot"></span>macOS · Windows · Linux · MIT</span>
+  <span class="badge"><span class="dot"></span>macOS · tested on Linux · untested: Windows · MIT</span>
   <h1>siphon</h1>
   <p class="subhead">Paste a link and get the file. Point it at a folder you already have and get the same thing in a different shape. It is one pipeline either way — a download is just a conversion that had to fetch its input first — and it does not re-encode anything it does not have to.</p>
   <div class="headmeta">
@@ -243,9 +240,32 @@ siphon list https://…/playlist        <span class="muted">show what is in it, 
 </div>
 </section>
 
-<section id="remux">
-  <p class="eyebrow">The part that matters</p>
-  <h2>It does not re-encode what it does not have to</h2>
+<section id="get">
+  <p class="eyebrow">Getting it</p>
+  <h2>It offers to install what it needs</h2>
+  <p>siphon ships no binaries. That is deliberate: yt-dlp releases most weeks because the sites it reads keep changing, and a copy frozen inside a download would be broken by the time you opened it. This way <span class="mono">brew upgrade yt-dlp</span> fixes siphon without siphon being touched.</p>
+  <p>So the first run asks, and the default answer is yes to all of it.</p>
+  <div class="figure">
+<pre class="report mono">siphon needs a few programs it does not ship.
+
+  ffmpeg     needed  <span class="muted">— converting audio and video, and muxing what yt-dlp fetches</span>
+  magick     extra   <span class="muted">— still image formats ffmpeg handles badly or not at all</span>
+
+  brew install ffmpeg
+  brew install imagemagick
+
+Install all 2 of these with Homebrew? [Y/n]</pre>
+<p class="caption">On a system whose package manager needs root, siphon prints the command instead of running it. It will not invoke <span class="mono">sudo</span> on your behalf.</p>
+</div>
+  <p><a href="https://github.com/snepssen/siphon">The source is on GitHub</a>, MIT, Python 3.10 or newer. Clone it and run <span class="mono">./start.sh</span>, or build a <span class="mono">.app</span> and a single-file <span class="mono">.pyz</span> with <span class="mono">./build.sh</span>.</p>
+</section>
+
+<section id="in-depth" class="folds">
+  <p class="eyebrow">In depth</p>
+  <h2>How it works</h2>
+  <details class="fold" id="remux">
+    <summary><span class="fold__title">It does not re-encode what it does not have to</span><span class="fold__teaser">Asking for an mp4 is usually a one-second repackage, not a re-encode. siphon re-encodes only the streams that need it, and says which.</span></summary>
+    <div class="fold__body">
   <p>Asking for an mp4 is usually not a conversion. The video is already H.264 and the audio already AAC; both are legal inside an mp4; the only work needed is moving the streams into a different wrapper. That takes about a second and changes not one sample. Re-encoding anyway would cost minutes and quality in exchange for nothing at all.</p>
   <p>So siphon compares what is in the file against what you asked for, stream by stream, re-encodes exactly the streams that need it — and tells you which ones those were.</p>
   <div class="figure">
@@ -259,11 +279,11 @@ siphon list https://…/playlist        <span class="muted">show what is in it, 
 </div>
   <p>The same reasoning runs backwards into the fetch. Ask for an mp4 and siphon asks yt-dlp for the H.264 and AAC renditions specifically, so the conversion afterwards finds it has nothing to do. Ask for an <span class="mono">.opus</span> from YouTube and the result is a pure copy of what YouTube already serves — 0.09 seconds, against 7.65 to re-encode the same audio to mp3.</p>
   <p>You can see the decision before committing to it: <span class="mono">siphon plan recording.wav --as flac</span>.</p>
-</section>
-
-<section id="music">
-  <p class="eyebrow">Music</p>
-  <h2>A playlist is a list of names, not a list of files</h2>
+    </div>
+  </details>
+  <details class="fold" id="music">
+    <summary><span class="fold__title">A playlist is a list of names, not a list of files</span><span class="fold__teaser">Paste a Deezer, Spotify or Tidal link: siphon reads the track list, finds each track where it is served openly, and asks before it fetches a weak match.</span></summary>
+    <div class="fold__body">
   <p>Paste a Deezer, Spotify or Tidal album, playlist or track. siphon reads the track list — titles, artists, running times, cover art, ISRCs — then finds each track something that will actually serve it, fetches that, tags it, embeds the cover and files it under the album.</p>
   <p>Deezer needs no key at all. Spotify works without one too, by reading the same embed its web player uses — but that path cannot see ISRCs and stops at fifty tracks of a long playlist, so siphon says when a list looks truncated rather than quietly handing you a fraction of it.</p>
   <h3>How a track is matched, and when it refuses</h3>
@@ -289,11 +309,11 @@ siphon list https://…/playlist        <span class="muted">show what is in it, 
     </picture>
     <figcaption>Erik Satie's Gnossienne No.1 at 69% — close enough to offer, not close enough to assume. Nothing has been fetched at this point, and the job waits as long as it takes, including across a restart.</figcaption>
   </figure>
-</section>
-
-<section id="formats">
-  <p class="eyebrow">Formats</p>
-  <h2>Four kinds of thing, one pipeline</h2>
+    </div>
+  </details>
+  <details class="fold" id="formats">
+    <summary><span class="fold__title">Four kinds of thing, one pipeline</span><span class="fold__teaser">Audio, video, images and documents, through one pipeline, with each preset adjustable where adjusting means something.</span></summary>
+    <div class="fold__body">
   <div class="cards">
     <div class="card"><h3>Audio</h3><p class="mono">mp3 · m4a · opus · flac · wav</p><p>Plus <span class="mono">audio</span>, meaning whatever it already was, untouched.</p></div>
     <div class="card"><h3>Video</h3><p class="mono">mp4 · mp4-1080 · mp4-720 · mkv · webm</p><p>Plus <span class="mono">video</span> — best available, nothing re-encoded.</p></div>
@@ -302,34 +322,16 @@ siphon list https://…/playlist        <span class="muted">show what is in it, 
   </div>
   <p>A preset is where a setting starts, not where it is stuck. Pick a format and the window offers what can be adjusted on it — a bitrate for a lossy audio format, a resolution for video, quality and a size cap for images, a rendering resolution for PDF pages — and the command line takes the same choices. Only the settings that mean something are offered: there is no bitrate on FLAC and no resolution on an audio file, because a control that changes nothing is worse than no control.</p>
   <p class="note">A PDF rendered to images gives you one file per page, not a picture of page one.</p>
-</section>
-
-<section id="get">
-  <p class="eyebrow">Getting it</p>
-  <h2>It offers to install what it needs</h2>
-  <p>siphon ships no binaries. That is deliberate: yt-dlp releases most weeks because the sites it reads keep changing, and a copy frozen inside a download would be broken by the time you opened it. This way <span class="mono">brew upgrade yt-dlp</span> fixes siphon without siphon being touched.</p>
-  <p>So the first run asks, and the default answer is yes to all of it.</p>
-  <div class="figure">
-<pre class="report mono">siphon needs a few programs it does not ship.
-
-  ffmpeg     needed  <span class="muted">— converting audio and video, and muxing what yt-dlp fetches</span>
-  magick     extra   <span class="muted">— still image formats ffmpeg handles badly or not at all</span>
-
-  brew install ffmpeg
-  brew install imagemagick
-
-Install all 2 of these with Homebrew? [Y/n]</pre>
-<p class="caption">On a system whose package manager needs root, siphon prints the command instead of running it. It will not invoke <span class="mono">sudo</span> on your behalf.</p>
-</div>
-  <p><a href="https://github.com/snepssen/siphon">The source is on GitHub</a>, MIT, Python 3.10 or newer. Clone it and run <span class="mono">./start.sh</span>, or build a <span class="mono">.app</span> and a single-file <span class="mono">.pyz</span> with <span class="mono">./build.sh</span>.</p>
-</section>
-
-<section id="limits">
-  <p class="eyebrow">Honesty</p>
-  <h2>What it will not do</h2>
+    </div>
+  </details>
+  <details class="fold" id="limits">
+    <summary><span class="fold__title">What it will not do</span><span class="fold__teaser">No DRM, no accounts, no uploads, no editing: the lines siphon stays on the right side of.</span></summary>
+    <div class="fold__body">
   <p>siphon fetches things that are served openly. It reads playlists from streaming services as metadata — what the tracks are — and then fetches those tracks from somewhere that serves them. <b>It does not decrypt protected streams, and it will not be made to.</b> If a service hands out its audio under DRM, siphon's answer is that it cannot help, and it says so in those words rather than failing strangely.</p>
   <p>It is not an editor and not a library manager. It does not upload anything anywhere, and nothing leaves your machine except the request that fetches the media. There are no accounts, no telemetry and no cloud anything.</p>
   <p>Two limits worth knowing before you meet them. <b>There is no way back out of a PDF</b> — a PDF describes marks on a page, and the structure the document had before it became one is not in the file; siphon makes PDFs smaller and renders their pages, and does not pretend to un-print them. And <b>converting a document is not transcoding</b>: tracked changes and exact layout do not survive a change of format, so every plan says what it will lose before it runs.</p>
+    </div>
+  </details>
 </section>
 
 <section class="ecosystem-more" aria-labelledby="ecosystem-heading">
@@ -342,56 +344,56 @@ Install all 2 of these with Homebrew? [Y/n]</pre>
   </div>
   <div class="ecosystem-grid">
     <a class="ecosystem-card" data-project="gateway-forge" style="--card-accent: var(--eco-gateway)" href="https://snepssen.github.io/gateway-forge/">
-      <div class="ecosystem-card__index"><span>01 / JOURNEYS</span><span>macOS · Windows · Linux</span></div>
+      <div class="ecosystem-card__index"><span>01 / JOURNEYS</span><span>macOS</span></div>
       <div class="ecosystem-card__glyph" aria-hidden="true">F10 ── F27</div>
       <h3>Gateway Forge</h3>
       <p>Assemble guided sessions and keep published maps beside what was actually found.</p>
       <span class="ecosystem-card__go">Explore Gateway Forge →</span>
     </a>
     <a class="ecosystem-card" data-project="voice-forge" style="--card-accent: var(--eco-voice)" href="https://snepssen.github.io/voice-forge/">
-      <div class="ecosystem-card__index"><span>02 / SPEECH</span><span>macOS · Windows · Linux</span></div>
+      <div class="ecosystem-card__index"><span>02 / SPEECH</span><span>macOS · Linux · untested: Windows</span></div>
       <div class="ecosystem-card__glyph" aria-hidden="true">⌁ / həˈləʊ /</div>
       <h3>Voice Forge</h3>
       <p>A transparent Piper workbench for timing, pronunciation, and honest audio export.</p>
       <span class="ecosystem-card__go">Explore Voice Forge →</span>
     </a>
     <a class="ecosystem-card" data-project="protoke" style="--card-accent: var(--eco-protoke)" href="https://snepssen.github.io/protoke/">
-      <div class="ecosystem-card__index"><span>03 / VIDEO</span><span>macOS · Windows · Linux</span></div>
+      <div class="ecosystem-card__index"><span>03 / VIDEO</span><span>macOS · tested on Linux, Windows</span></div>
       <div class="ecosystem-card__glyph" aria-hidden="true">◤ w ◥</div>
       <h3>Protoke</h3>
       <p>Karaoke and narration video with a vector visor face that mouths every word.</p>
       <span class="ecosystem-card__go">Explore Protoke →</span>
     </a>
     <a class="ecosystem-card" data-project="media-preflight" style="--card-accent: var(--eco-preflight)" href="https://snepssen.github.io/media-preflight/">
-      <div class="ecosystem-card__index"><span>04 / DELIVERY</span><span>macOS · Windows · Linux</span></div>
+      <div class="ecosystem-card__index"><span>04 / DELIVERY</span><span>macOS · tested on Linux, Windows</span></div>
       <div class="ecosystem-card__glyph" aria-hidden="true">✓ ≤ -3 dB</div>
       <h3>Media Preflight</h3>
       <p>Check a finished file against where it is going, and correct it without touching the original.</p>
       <span class="ecosystem-card__go">Explore Media Preflight →</span>
     </a>
     <a class="ecosystem-card" data-project="siphon" style="--card-accent: var(--eco-siphon)" href="https://snepssen.github.io/siphon/" aria-current="page">
-      <div class="ecosystem-card__index"><span>05 / INTAKE</span><span>macOS · Windows · Linux</span></div>
+      <div class="ecosystem-card__index"><span>05 / INTAKE</span><span>macOS · tested on Linux · untested: Windows</span></div>
       <div class="ecosystem-card__glyph" aria-hidden="true">webm ⟶ mp3</div>
       <h3>siphon</h3>
       <p>Fetch from a link or convert what you already have, without re-encoding what it does not have to.</p>
       <span class="ecosystem-card__go">Explore siphon →</span>
     </a>
     <a class="ecosystem-card" data-project="auto-sort" style="--card-accent: var(--eco-autosort)" href="https://snepssen.github.io/auto-sort/">
-      <div class="ecosystem-card__index"><span>06 / FILING</span><span>macOS · Windows · Linux</span></div>
+      <div class="ecosystem-card__index"><span>06 / FILING</span><span>macOS · Linux · tested on Windows</span></div>
       <div class="ecosystem-card__glyph" aria-hidden="true">↓ Downloads → ∅</div>
       <h3>auto-sort</h3>
       <p>Empty the Downloads funnel into structure the folder taught it, and undo any of it.</p>
       <span class="ecosystem-card__go">Explore auto-sort →</span>
     </a>
     <a class="ecosystem-card" data-project="interpreter-forge" style="--card-accent: var(--eco-interpreter)" href="https://snepssen.github.io/interpreter-forge/">
-      <div class="ecosystem-card__index"><span>07 / INTERPRETING</span><span>macOS · iPhone</span></div>
+      <div class="ecosystem-card__index"><span>07 / INTERPRETING</span><span>macOS · iPhone · iPad · untested: Android</span></div>
       <div class="ecosystem-card__glyph" aria-hidden="true">halb elf → 10:30</div>
       <h3>Interpreter</h3>
       <p>Hear the table in English a few seconds behind, cut at the end of each thought, on your own phone.</p>
       <span class="ecosystem-card__go">Explore Interpreter →</span>
     </a>
     <a class="ecosystem-card" data-project="companion-forge" style="--card-accent: var(--eco-companion)" href="https://snepssen.github.io/companion-forge/">
-      <div class="ecosystem-card__index"><span>08 / COMPANION</span><span>Mac · iPhone · iPad</span></div>
+      <div class="ecosystem-card__index"><span>08 / COMPANION</span><span>macOS · iPhone · iPad</span></div>
       <div class="ecosystem-card__glyph" aria-hidden="true">mic → visor</div>
       <h3>companion-forge</h3>
       <p>A local voice companion for Mac, iPhone and iPad, with a protogen LED-visor face.</p>
@@ -412,7 +414,7 @@ Install all 2 of these with Homebrew? [Y/n]</pre>
       <span class="ecosystem-card__go">Open the repository →</span>
     </a>
     <a class="ecosystem-card" data-project="voice-core" style="--card-accent: var(--eco-voicecore)" href="https://github.com/snepssen/voice-core">
-      <div class="ecosystem-card__index"><span>11 / ENGINE</span><span>Swift · macOS · iOS</span></div>
+      <div class="ecosystem-card__index"><span>11 / ENGINE</span><span>Swift · macOS · iOS · tested on Linux</span></div>
       <div class="ecosystem-card__glyph" aria-hidden="true">text → /ipa/ → ids</div>
       <h3>voice-core</h3>
       <p>The speech engine the apps share: espeak-ng, the phonemizer and Piper inference, from one source.</p>
@@ -439,6 +441,7 @@ Install all 2 of these with Homebrew? [Y/n]</pre>
   <p class="eyebrow">Get in touch</p>
   <h2>If something looks wrong, say so</h2>
   <p>There is no analytics here and no crash reporter, so a failure has no way of reaching me on its own.</p>
+  <p>Its tests pass on Linux, but nobody has used it there by hand yet. It has not been run on Windows yet. If you use it on one of them, say what happened, working or not.</p>
   <div class="contact-card">
     <a href="https://github.com/snepssen/siphon/issues">Open an issue<span>github.com/snepssen/siphon ↗</span></a>
     <a href="https://t.me/snepssen">Telegram<span>@snepssen ↗</span></a>
