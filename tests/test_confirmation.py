@@ -85,7 +85,9 @@ class AWaitingJobHasDownloadedNothing(unittest.TestCase):
             workers=1, state_path=Path(self.directory.name) / "queue.json")
 
     def tearDown(self):
-        self.queue.stop(wait=False)
+        # Wait for the worker: a chosen job is queued again and runs, and
+        # removing the folder under it races its writing queue.json there.
+        self.queue.stop(wait=True, timeout=10)
         resolve.search = self.original
         self.directory.cleanup()
 
