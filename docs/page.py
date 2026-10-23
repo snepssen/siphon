@@ -17,7 +17,7 @@ PAGE = {
         "slug": "siphon",
         "name": "siphon",
         "title": "siphon",
-        "badge": "macOS · Windows · Linux · MIT",
+        "license": "MIT",
         "fonts": FONTS,
         "description": (
             "Fetch media from a URL, or convert what you already have. "
@@ -93,7 +93,45 @@ PAGE = {
             ],
         },
         {
+            "id": "get",
+            "jump": "Get it",
+            "eyebrow": "Getting it",
+            "heading": "It offers to install what it needs",
+            "blocks": [
+                {"kind": "prose", "text": [
+                    "siphon ships no binaries. That is deliberate: yt-dlp releases "
+                    "most weeks because the sites it reads keep changing, and a copy "
+                    "frozen inside a download would be broken by the time you opened "
+                    "it. This way <span class=\"mono\">brew upgrade yt-dlp</span> "
+                    "fixes siphon without siphon being touched.",
+                    "So the first run asks, and the default answer is yes to all of "
+                    "it.",
+                ]},
+                {"kind": "report", "text": (
+                    "siphon needs a few programs it does not ship.\n\n"
+                    '  ffmpeg     needed  <span class="muted">— converting audio and video, and muxing what yt-dlp fetches</span>\n'
+                    '  magick     extra   <span class="muted">— still image formats ffmpeg handles badly or not at all</span>\n\n'
+                    "  brew install ffmpeg\n"
+                    "  brew install imagemagick\n\n"
+                    "Install all 2 of these with Homebrew? [Y/n]"
+                 ), "caption": (
+                    "On a system whose package manager needs root, siphon prints the "
+                    "command instead of running it. It will not invoke "
+                    "<span class=\"mono\">sudo</span> on your behalf.")},
+                {"kind": "prose", "text": [
+                    '<a href="https://github.com/snepssen/siphon">The source is on '
+                    "GitHub</a>, MIT, Python 3.10 or newer. Clone it and run "
+                    "<span class=\"mono\">./start.sh</span>, or build a "
+                    "<span class=\"mono\">.app</span> and a single-file "
+                    "<span class=\"mono\">.pyz</span> with "
+                    "<span class=\"mono\">./build.sh</span>.",
+                ]},
+            ],
+        },
+        {
             "id": "remux",
+            "fold": True,
+            "teaser": ('Asking for an mp4 is usually a one-second repackage, not a re-encode. siphon re-encodes only the streams that need it, and says which.'),
             "jump": "Why it is fast",
             "eyebrow": "The part that matters",
             "heading": "It does not re-encode what it does not have to",
@@ -138,6 +176,8 @@ PAGE = {
         },
         {
             "id": "music",
+            "fold": True,
+            "teaser": ('Paste a Deezer, Spotify or Tidal link: siphon reads the track list, finds each track where it is served openly, and asks before it fetches a weak match.'),
             "jump": "Music",
             "eyebrow": "Music",
             "heading": "A playlist is a list of names, not a list of files",
@@ -201,6 +241,8 @@ PAGE = {
         },
         {
             "id": "formats",
+            "fold": True,
+            "teaser": ('Audio, video, images and documents, through one pipeline, with each preset adjustable where adjusting means something.'),
             "jump": "Formats",
             "eyebrow": "Formats",
             "heading": "Four kinds of thing, one pipeline",
@@ -240,43 +282,9 @@ PAGE = {
             ],
         },
         {
-            "id": "get",
-            "jump": "Get it",
-            "eyebrow": "Getting it",
-            "heading": "It offers to install what it needs",
-            "blocks": [
-                {"kind": "prose", "text": [
-                    "siphon ships no binaries. That is deliberate: yt-dlp releases "
-                    "most weeks because the sites it reads keep changing, and a copy "
-                    "frozen inside a download would be broken by the time you opened "
-                    "it. This way <span class=\"mono\">brew upgrade yt-dlp</span> "
-                    "fixes siphon without siphon being touched.",
-                    "So the first run asks, and the default answer is yes to all of "
-                    "it.",
-                ]},
-                {"kind": "report", "text": (
-                    "siphon needs a few programs it does not ship.\n\n"
-                    '  ffmpeg     needed  <span class="muted">— converting audio and video, and muxing what yt-dlp fetches</span>\n'
-                    '  magick     extra   <span class="muted">— still image formats ffmpeg handles badly or not at all</span>\n\n'
-                    "  brew install ffmpeg\n"
-                    "  brew install imagemagick\n\n"
-                    "Install all 2 of these with Homebrew? [Y/n]"
-                 ), "caption": (
-                    "On a system whose package manager needs root, siphon prints the "
-                    "command instead of running it. It will not invoke "
-                    "<span class=\"mono\">sudo</span> on your behalf.")},
-                {"kind": "prose", "text": [
-                    '<a href="https://github.com/snepssen/siphon">The source is on '
-                    "GitHub</a>, MIT, Python 3.10 or newer. Clone it and run "
-                    "<span class=\"mono\">./start.sh</span>, or build a "
-                    "<span class=\"mono\">.app</span> and a single-file "
-                    "<span class=\"mono\">.pyz</span> with "
-                    "<span class=\"mono\">./build.sh</span>.",
-                ]},
-            ],
-        },
-        {
             "id": "limits",
+            "fold": True,
+            "teaser": ('No DRM, no accounts, no uploads, no editing: the lines siphon stays on the right side of.'),
             "jump": "What it will not do",
             "eyebrow": "Honesty",
             "heading": "What it will not do",
