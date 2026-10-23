@@ -30,7 +30,7 @@ BUILD="$ROOT/build"
 MODULES=(siphon.py app.py jobs.py model.py formats.py library.py paths.py \
          credentials.py platform_support.py net.py resolve.py bootstrap.py \
          cobalt_service.py pot_provider.py index.html __main__.py)
-PACKAGES=(sources engines)
+PACKAGES=(sources engines workshop)
 
 say() { printf '  %s\n' "$*"; }
 
